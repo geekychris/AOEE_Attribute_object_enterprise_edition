@@ -1,4 +1,6 @@
 # AOEE - Attribute Object Enterprise Edition
+![img.png](doc_images/aoee_logo.png)
+
 
 A high-performance, TAO-inspired in-memory relationship cache for social graph queries. AOEE provides compressed posting lists with efficient set operations optimized for friend-of-friend queries, news feeds, and social graph traversals.
 
