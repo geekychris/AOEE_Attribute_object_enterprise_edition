@@ -1,0 +1,2 @@
+cargo:rerun-if-changed=../aoee-server/proto/aoee.proto
+cargo:rerun-if-changed=../aoee-server/proto/

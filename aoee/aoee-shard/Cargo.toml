@@ -1,0 +1,22 @@
+[package]
+name = "aoee-shard"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Shard management for AOEE"
+
+[dependencies]
+aoee-core.workspace = true
+aoee-storage.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+async-trait.workspace = true
+tokio.workspace = true
+dashmap.workspace = true
+parking_lot.workspace = true
+serde = { workspace = true, features = ["derive"] }
+tracing.workspace = true
+
+[dev-dependencies]
+tokio-test.workspace = true

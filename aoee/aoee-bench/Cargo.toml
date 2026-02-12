@@ -1,0 +1,27 @@
+[package]
+name = "aoee-bench"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "AOEE benchmarks"
+
+[dependencies]
+aoee-core.workspace = true
+aoee-storage.workspace = true
+aoee-shard.workspace = true
+criterion.workspace = true
+rand.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread"] }
+
+[[bench]]
+name = "encoding"
+harness = false
+
+[[bench]]
+name = "set_ops"
+harness = false
+
+[[bench]]
+name = "shard"
+harness = false

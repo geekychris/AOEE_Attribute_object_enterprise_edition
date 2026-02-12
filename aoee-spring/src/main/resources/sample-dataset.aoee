@@ -1,0 +1,183 @@
+# AOEE Sample Dataset - Social Network
+# Format:
+#   ENTITY <type> <id> <name>   - Define an entity (optional, for reference)
+#   <edge_type> <src> <dst>     - Create an edge
+#
+# Supported edge types: FOLLOWS, FRIEND, LIKES, MEMBER, AUTHORED, TAGGED
+
+# =============================================================================
+# USERS
+# =============================================================================
+ENTITY USER 1 alice
+ENTITY USER 2 bob
+ENTITY USER 3 charlie
+ENTITY USER 4 diana
+ENTITY USER 5 eve
+ENTITY USER 6 frank
+ENTITY USER 7 grace
+ENTITY USER 8 henry
+ENTITY USER 9 iris
+ENTITY USER 10 jack
+
+# =============================================================================
+# POSTS
+# =============================================================================
+ENTITY POST 1001 alice_post_1
+ENTITY POST 1002 alice_post_2
+ENTITY POST 1003 bob_post_1
+ENTITY POST 1004 charlie_post_1
+ENTITY POST 1005 diana_post_1
+ENTITY POST 1006 eve_post_1
+
+# =============================================================================
+# GROUPS
+# =============================================================================
+ENTITY GROUP 2001 developers
+ENTITY GROUP 2002 musicians
+ENTITY GROUP 2003 hikers
+
+# =============================================================================
+# TAGS
+# =============================================================================
+ENTITY TAG 3001 rust
+ENTITY TAG 3002 java
+ENTITY TAG 3003 react
+ENTITY TAG 3004 music
+ENTITY TAG 3005 hiking
+
+# =============================================================================
+# FOLLOW RELATIONSHIPS
+# Social graph - who follows whom
+# =============================================================================
+
+# Alice's network (popular user)
+FOLLOWS 2 1    # bob -> alice
+FOLLOWS 3 1    # charlie -> alice
+FOLLOWS 4 1    # diana -> alice
+FOLLOWS 5 1    # eve -> alice
+FOLLOWS 6 1    # frank -> alice
+FOLLOWS 7 1    # grace -> alice
+
+# Bob's network
+FOLLOWS 1 2    # alice -> bob (mutual)
+FOLLOWS 3 2    # charlie -> bob
+FOLLOWS 4 2    # diana -> bob
+FOLLOWS 8 2    # henry -> bob
+
+# Charlie's network
+FOLLOWS 1 3    # alice -> charlie
+FOLLOWS 2 3    # bob -> charlie (mutual)
+FOLLOWS 5 3    # eve -> charlie
+
+# Diana's network
+FOLLOWS 1 4    # alice -> diana
+FOLLOWS 5 4    # eve -> diana
+FOLLOWS 6 4    # frank -> diana
+
+# Eve's network
+FOLLOWS 1 5    # alice -> eve
+FOLLOWS 4 5    # diana -> eve (mutual)
+FOLLOWS 7 5    # grace -> eve
+
+# Cross connections for interesting FOF queries
+FOLLOWS 8 6    # henry -> frank
+FOLLOWS 9 6    # iris -> frank
+FOLLOWS 10 7   # jack -> grace
+FOLLOWS 9 8    # iris -> henry
+FOLLOWS 10 9   # jack -> iris
+
+# =============================================================================
+# FRIEND RELATIONSHIPS (bidirectional in real apps, but stored as edges)
+# =============================================================================
+FRIEND 1 2     # alice <-> bob
+FRIEND 2 1
+FRIEND 1 3     # alice <-> charlie
+FRIEND 3 1
+FRIEND 2 4     # bob <-> diana
+FRIEND 4 2
+FRIEND 3 5     # charlie <-> eve
+FRIEND 5 3
+FRIEND 4 6     # diana <-> frank
+FRIEND 6 4
+FRIEND 5 7     # eve <-> grace
+FRIEND 7 5
+
+# =============================================================================
+# POST AUTHORSHIP
+# =============================================================================
+AUTHORED 1 1001   # alice authored post 1001
+AUTHORED 1 1002   # alice authored post 1002
+AUTHORED 2 1003   # bob authored post 1003
+AUTHORED 3 1004   # charlie authored post 1004
+AUTHORED 4 1005   # diana authored post 1005
+AUTHORED 5 1006   # eve authored post 1006
+
+# =============================================================================
+# LIKES (users liking posts) - with reactions: like, love, haha, wow, sad, angry
+# =============================================================================
+
+# Alice's posts are popular - various reactions
+LIKES 2 1001 love    # bob loves alice's post
+LIKES 3 1001 like    # charlie likes alice's post
+LIKES 4 1001 wow     # diana is wowed
+LIKES 5 1001 haha    # eve finds it funny
+LIKES 6 1001 love    # frank loves it
+
+LIKES 2 1002 like    # bob likes alice's second post
+LIKES 3 1002 love    # charlie loves it
+LIKES 7 1002 haha    # grace finds it funny
+
+# Other post likes with reactions
+LIKES 1 1003 love    # alice loves bob's post
+LIKES 3 1003 like    # charlie likes bob's post
+LIKES 1 1004 like    # alice likes charlie's post
+LIKES 2 1004 wow     # bob is impressed
+LIKES 4 1004 love    # diana loves charlie's post
+LIKES 1 1005 love    # alice loves diana's post
+LIKES 6 1006 haha    # frank finds eve's post funny
+LIKES 7 1006 like    # grace likes eve's post
+
+# =============================================================================
+# GROUP MEMBERSHIPS
+# =============================================================================
+
+# Developers group
+MEMBER 1 2001   # alice is a developer
+MEMBER 2 2001   # bob is a developer
+MEMBER 3 2001   # charlie is a developer
+MEMBER 8 2001   # henry is a developer
+
+# Musicians group
+MEMBER 4 2002   # diana is a musician
+MEMBER 5 2002   # eve is a musician
+MEMBER 6 2002   # frank is a musician
+MEMBER 7 2002   # grace is a musician
+
+# Hikers group
+MEMBER 1 2003   # alice hikes
+MEMBER 4 2003   # diana hikes
+MEMBER 9 2003   # iris hikes
+MEMBER 10 2003  # jack hikes
+
+# =============================================================================
+# TAG INTERESTS
+# =============================================================================
+
+# Programming tags
+TAGGED 1 3001   # alice -> rust
+TAGGED 2 3001   # bob -> rust
+TAGGED 1 3002   # alice -> java
+TAGGED 3 3002   # charlie -> java
+TAGGED 8 3002   # henry -> java
+TAGGED 1 3003   # alice -> react
+TAGGED 2 3003   # bob -> react
+TAGGED 3 3003   # charlie -> react
+
+# Hobby tags
+TAGGED 4 3004   # diana -> music
+TAGGED 5 3004   # eve -> music
+TAGGED 6 3004   # frank -> music
+TAGGED 1 3005   # alice -> hiking
+TAGGED 4 3005   # diana -> hiking
+TAGGED 9 3005   # iris -> hiking
+TAGGED 10 3005  # jack -> hiking

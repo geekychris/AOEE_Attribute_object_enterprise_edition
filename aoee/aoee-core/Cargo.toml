@@ -1,0 +1,19 @@
+[package]
+name = "aoee-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Core data structures and algorithms for AOEE"
+
+[dependencies]
+thiserror.workspace = true
+anyhow.workspace = true
+bytes.workspace = true
+roaring.workspace = true
+parking_lot.workspace = true
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+proptest.workspace = true
+rand.workspace = true

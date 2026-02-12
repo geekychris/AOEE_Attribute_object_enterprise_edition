@@ -1,0 +1,19 @@
+[package]
+name = "aoee-client"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "AOEE gRPC client library"
+
+[dependencies]
+aoee-core.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+tokio.workspace = true
+tonic.workspace = true
+prost.workspace = true
+tracing.workspace = true
+
+[build-dependencies]
+tonic-build = "0.11"

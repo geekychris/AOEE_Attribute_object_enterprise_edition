@@ -1,0 +1,16 @@
+server:
+  port: 8080
+
+aoee:
+  host: localhost
+  port: 50051
+
+spring:
+  application:
+    name: aoee-spring
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

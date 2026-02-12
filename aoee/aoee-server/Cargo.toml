@@ -1,0 +1,30 @@
+[package]
+name = "aoee-server"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "AOEE gRPC server"
+
+[dependencies]
+aoee-core.workspace = true
+aoee-storage.workspace = true
+aoee-shard.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+async-trait.workspace = true
+tokio.workspace = true
+tonic.workspace = true
+prost.workspace = true
+serde = { workspace = true, features = ["derive"] }
+toml.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+prometheus.workspace = true
+
+[build-dependencies]
+tonic-build = "0.11"
+
+[[bin]]
+name = "aoee-server"
+path = "src/main.rs"

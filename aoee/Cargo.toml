@@ -1,0 +1,63 @@
+[workspace]
+resolver = "2"
+members = [
+    "aoee-core",
+    "aoee-storage",
+    "aoee-shard",
+    "aoee-server",
+    "aoee-client",
+    "aoee-bench",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["AOEE Contributors"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/example/aoee"
+
+[workspace.dependencies]
+# Core
+thiserror = "1.0"
+anyhow = "1.0"
+bytes = "1.5"
+roaring = "0.10"
+
+# Async
+tokio = { version = "1.36", features = ["full"] }
+async-trait = "0.1"
+
+# Concurrency
+dashmap = "5.5"
+parking_lot = "0.12"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+
+# Service
+tonic = "0.11"
+prost = "0.12"
+prost-types = "0.12"
+hyper = { version = "1.1", features = ["full"] }
+axum = "0.7"
+tower = "0.4"
+
+# Observability
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+prometheus = "0.13"
+
+# Testing
+criterion = { version = "0.5", features = ["html_reports"] }
+proptest = "1.4"
+tokio-test = "0.4"
+rand = "0.8"
+
+# Internal crates
+aoee-core = { path = "aoee-core" }
+aoee-storage = { path = "aoee-storage" }
+aoee-shard = { path = "aoee-shard" }
+aoee-server = { path = "aoee-server" }
+aoee-client = { path = "aoee-client" }

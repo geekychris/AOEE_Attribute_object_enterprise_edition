@@ -1,0 +1,1 @@
+{"rustc":15497389221046826682,"features":"","declared_features":"","target":0,"profile":0,"path":0,"deps":[[17937582695143060701,"build_script_build",false,8784487876339576434]],"local":[{"RerunIfChanged":{"output":"debug/build/aoee-client-9276f05bd11897cc/output","paths":["../aoee-server/proto/aoee.proto","../aoee-server/proto/"]}}],"rustflags":[],"config":0,"compile_kind":0}

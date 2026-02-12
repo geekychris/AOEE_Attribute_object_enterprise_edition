@@ -1,0 +1,154 @@
+syntax = "proto3";
+
+package aoee;
+
+// AOEE Service - Attribute Object Enterprise Edition
+//
+// Edge types that support metadata (1 byte):
+//   LIKES (10) - reaction type: 0=like, 1=love, 2=haha, 3=wow, 4=sad, 5=angry
+//
+service Aoee {
+    // Edge operations
+    rpc AddEdge(AddEdgeRequest) returns (AddEdgeResponse);
+    rpc DeleteEdge(DeleteEdgeRequest) returns (DeleteEdgeResponse);
+    
+    // Query operations
+    rpc Neighbors(NeighborsRequest) returns (NeighborsResponse);
+    rpc Contains(ContainsRequest) returns (ContainsResponse);
+    rpc Count(CountRequest) returns (CountResponse);
+    
+    // Set operations
+    rpc Intersect(IntersectRequest) returns (IntersectResponse);
+    rpc Union(UnionRequest) returns (UnionResponse);
+    
+    // Friend-of-Friend
+    rpc FriendOfFriend(FofRequest) returns (FofResponse);
+    
+    // Stats
+    rpc Stats(StatsRequest) returns (StatsResponse);
+}
+
+// Edge key: (src, edge_type)
+message EdgeKey {
+    uint64 src = 1;
+    uint32 edge_type = 2;
+}
+
+// Add edge request
+message AddEdgeRequest {
+    EdgeKey key = 1;
+    uint64 dst = 2;
+    uint64 timestamp = 3;  // Optional: 0 = auto-generate (nanoseconds since epoch)
+    uint32 metadata = 4;   // Optional: uses low byte only, meaning depends on edge_type
+}
+
+message AddEdgeResponse {
+    bool success = 1;
+    uint64 timestamp = 2;  // The timestamp that was assigned
+}
+
+// Delete edge request
+message DeleteEdgeRequest {
+    EdgeKey key = 1;
+    uint64 dst = 2;
+}
+
+message DeleteEdgeResponse {
+    bool success = 1;
+}
+
+// Neighbors request
+message NeighborsRequest {
+    EdgeKey key = 1;
+    uint32 limit = 2;  // 0 = no limit
+    uint64 cursor = 3; // For pagination, 0 = start
+    bool include_metadata = 4;  // If true, return timestamps and metadata
+}
+
+message NeighborsResponse {
+    repeated uint64 neighbors = 1;
+    uint64 next_cursor = 2;  // 0 = no more
+    // Parallel arrays (same length as neighbors) - only populated if include_metadata=true
+    repeated uint64 timestamps = 3;
+    repeated uint32 metadata = 4;  // Low byte only
+}
+
+// Contains request
+message ContainsRequest {
+    EdgeKey key = 1;
+    uint64 dst = 2;
+}
+
+message ContainsResponse {
+    bool exists = 1;
+}
+
+// Count request
+message CountRequest {
+    EdgeKey key = 1;
+}
+
+message CountResponse {
+    uint64 count = 1;
+}
+
+// Intersect request
+message IntersectRequest {
+    EdgeKey key1 = 1;
+    EdgeKey key2 = 2;
+}
+
+message IntersectResponse {
+    repeated uint64 ids = 1;
+}
+
+// Union request
+message UnionRequest {
+    EdgeKey key1 = 1;
+    EdgeKey key2 = 2;
+}
+
+message UnionResponse {
+    repeated uint64 ids = 1;
+}
+
+// Friend-of-Friend request
+message FofRequest {
+    uint64 source = 1;
+    uint32 edge_type = 2;
+    uint32 fanout_cap = 3;      // 0 = default (1000)
+    uint32 max_results = 4;      // 0 = default (100)
+    uint32 min_score = 5;        // 0 = default (1)
+    repeated uint64 exclusions = 6;
+}
+
+message FofCandidate {
+    uint64 id = 1;
+    uint32 score = 2;
+}
+
+message FofResponse {
+    repeated FofCandidate candidates = 1;
+    bool truncated = 2;
+    uint64 elapsed_ms = 3;
+}
+
+// Stats request
+message StatsRequest {
+    bool per_shard = 1;
+}
+
+message ShardStats {
+    uint32 shard_id = 1;
+    uint64 cached_lists = 2;
+    uint64 total_edges = 3;
+    uint64 reads = 4;
+    uint64 writes = 5;
+    uint64 cache_hits = 6;
+    uint64 cache_misses = 7;
+}
+
+message StatsResponse {
+    ShardStats aggregated = 1;
+    repeated ShardStats per_shard = 2;
+}
