@@ -515,6 +515,111 @@ pub trait EdgeStore: Send + Sync {
 
 ---
 
+## Benchmarking
+
+AOEE includes a comprehensive benchmarking system for performance testing at scale.
+
+### Running Benchmarks
+
+**Preset benchmarks:**
+
+```bash
+# Small: 1K users, ~125K edges, quick test
+curl -X POST http://localhost:8080/api/benchmark/run/small
+
+# Medium: 10K users, ~1.5M edges
+curl -X POST http://localhost:8080/api/benchmark/run/medium
+
+# Large: 100K users, ~15M edges (stress test)
+curl -X POST http://localhost:8080/api/benchmark/run/large
+```
+
+**Custom benchmark:**
+
+```bash
+curl -X POST http://localhost:8080/api/benchmark/run \
+  -H "Content-Type: application/json" \
+  -d '{
+    "numUsers": 5000,
+    "avgFollowsPerUser": 150,
+    "maxFollowsPerUser": 3000,
+    "popularUserRatio": 0.01,
+    "numPosts": 10000,
+    "avgLikesPerPost": 100,
+    "maxLikesPerPost": 10000,
+    "viralPostRatio": 0.02,
+    "avgFriendsPerUser": 75,
+    "numGroups": 25,
+    "avgMembersPerGroup": 400,
+    "warmupIterations": 200,
+    "benchmarkIterations": 5000
+  }'
+```
+
+**Generate data only (no benchmarking):**
+
+```bash
+curl -X POST http://localhost:8080/api/benchmark/generate/medium
+```
+
+### Benchmark Presets
+
+| Preset | Users | Posts | Edges | Popular Users | Viral Posts |
+|--------|-------|-------|-------|---------------|-------------|
+| small | 1K | 2K | ~125K | 20 (2%) | 100 (5%) |
+| medium | 10K | 20K | ~1.5M | 100 (1%) | 400 (2%) |
+| large | 100K | 200K | ~15M | 500 (0.5%) | 2000 (1%) |
+
+### Data Generation Features
+
+- **Power-law distribution**: Celebrity users get 5-20x more followers
+- **Viral content**: Some posts get significantly more likes
+- **Realistic reactions**: LIKES include random reaction types (👍❤️😂😮😢😠)
+- **Bidirectional friendships**: FRIEND_OF edges created in both directions
+- **Group memberships**: Users assigned to multiple groups
+
+### Operations Benchmarked
+
+| Operation | Description |
+|-----------|-------------|
+| `neighbors_follows` | Get FOLLOWS list for random users |
+| `neighbors_likes_metadata` | Get LIKES with reaction metadata |
+| `contains` | Check if edge exists between random users |
+| `count` | Count edges for random users |
+| `intersection_mutual_friends` | Find mutual FRIEND_OF between user pairs |
+| `friend_of_friend` | FOF suggestions (2-hop traversal) |
+| `large_list_popular_users` | Query popular users (high fan-out) |
+| `viral_post_query` | Query users with many likes |
+
+### Interpreting Results
+
+The benchmark reports latency statistics in microseconds (µs):
+
+- **Median**: 50th percentile - typical response time
+- **P95**: 95th percentile - tail latency threshold
+- **P99**: 99th percentile - worst case (excluding outliers)
+- **Throughput**: Operations per second
+
+**Example output:**
+
+```
+=== AOEE Benchmark Summary ===
+
+Data Generation:
+  - 1,000 users, 2,000 posts, 10 groups
+  - 125,657 total edges in 8,575 ms (14654 edges/sec)
+
+Operation Performance (latency in µs):
+  Operation                          Median        P95        P99        Max   Throughput
+  ------------------------------------------------------------------------------------
+  neighbors_follows                    67.5       91.9      151.3      246.0         14/s
+  contains                             64.4       79.4       93.1      269.8         15/s
+  intersection_mutual_friends          67.1       91.2      148.7      266.8         14/s
+  friend_of_friend                     69.1       91.0      129.0     1927.8         14/s
+```
+
+---
+
 ## Future Features
 
 ### Planned Enhancements

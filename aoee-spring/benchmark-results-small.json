@@ -1,0 +1,191 @@
+{
+  "config": {
+    "numUsers": 1000,
+    "avgFollowsPerUser": 50,
+    "maxFollowsPerUser": 200,
+    "popularUserRatio": 0.02,
+    "popularUserFollowerMultiplier": 5,
+    "numPosts": 2000,
+    "avgLikesPerPost": 20,
+    "maxLikesPerPost": 500,
+    "viralPostRatio": 0.05,
+    "avgFriendsPerUser": 20,
+    "numGroups": 10,
+    "avgMembersPerGroup": 100,
+    "warmupIterations": 100,
+    "benchmarkIterations": 1000,
+    "includeMetadata": true
+  },
+  "dataGeneration": {
+    "usersCreated": 1000,
+    "postsCreated": 2000,
+    "groupsCreated": 10,
+    "followEdges": 47477,
+    "friendEdges": 18912,
+    "likeEdges": 58142,
+    "memberEdges": 1126,
+    "totalEdges": 125657,
+    "durationMs": 8622,
+    "edgesPerSecond": 14573.99675249362
+  },
+  "operations": [
+    {
+      "operation": "neighbors_follows",
+      "description": "Get FOLLOWS neighbors for random users",
+      "iterations": 1000,
+      "latency": {
+        "min": 57.625,
+        "max": 195.708,
+        "mean": 80.521721,
+        "median": 76.333,
+        "p90": 97.125,
+        "p95": 109.875,
+        "p99": 138.542,
+        "stdDev": 16.131644991170585
+      },
+      "throughput": 12.419009275770447,
+      "details": {
+        "avgNeighborsReturned": 46
+      }
+    },
+    {
+      "operation": "neighbors_likes_metadata",
+      "description": "Get LIKES neighbors with metadata for random users",
+      "iterations": 1000,
+      "latency": {
+        "min": 61.958,
+        "max": 188.916,
+        "mean": 84.070915,
+        "median": 80.791,
+        "p90": 100.667,
+        "p95": 110.792,
+        "p99": 129.208,
+        "stdDev": 13.278602379684957
+      },
+      "throughput": 11.894720070549964,
+      "details": {
+        "avgLikesReturned": 58
+      }
+    },
+    {
+      "operation": "contains",
+      "description": "Check if FOLLOWS edge exists between random users",
+      "iterations": 1000,
+      "latency": {
+        "min": 54.334,
+        "max": 351.083,
+        "mean": 73.740592,
+        "median": 69.5,
+        "p90": 88.5,
+        "p95": 100.25,
+        "p99": 128.541,
+        "stdDev": 16.303099845045914
+      },
+      "throughput": 13.56105196443229,
+      "details": {
+        "hitRate": 0.038
+      }
+    },
+    {
+      "operation": "count",
+      "description": "Count FOLLOWS edges for random users",
+      "iterations": 1000,
+      "latency": {
+        "min": 51.625,
+        "max": 712.0,
+        "mean": 68.259406,
+        "median": 65.417,
+        "p90": 77.292,
+        "p95": 87.084,
+        "p99": 109.042,
+        "stdDev": 22.69387339277198
+      },
+      "throughput": 14.6499956357663,
+      "details": {
+        "avgCount": 94
+      }
+    },
+    {
+      "operation": "intersection_mutual_friends",
+      "description": "Find mutual FRIEND_OF between random user pairs",
+      "iterations": 1000,
+      "latency": {
+        "min": 55.166,
+        "max": 277.375,
+        "mean": 72.673977,
+        "median": 69.0,
+        "p90": 84.5,
+        "p95": 96.667,
+        "p99": 148.583,
+        "stdDev": 17.2949756071083
+      },
+      "throughput": 13.760083612872872,
+      "details": {
+        "avgMutualFriends": 0
+      }
+    },
+    {
+      "operation": "friend_of_friend",
+      "description": "FOF suggestions for random users (fanout=100, max=50)",
+      "iterations": 1000,
+      "latency": {
+        "min": 54.958,
+        "max": 160.584,
+        "mean": 70.174876,
+        "median": 68.25,
+        "p90": 78.667,
+        "p95": 85.333,
+        "p99": 100.666,
+        "stdDev": 8.915151940972402
+      },
+      "throughput": 14.250114243165887,
+      "details": {
+        "truncatedRate": 0.0,
+        "avgCandidates": 0
+      }
+    },
+    {
+      "operation": "large_list_popular_users",
+      "description": "Get FOLLOWS for popular users (high follower count)",
+      "iterations": 1000,
+      "latency": {
+        "min": 56.75,
+        "max": 178.291,
+        "mean": 70.188385,
+        "median": 68.291,
+        "p90": 78.834,
+        "p95": 85.458,
+        "p99": 116.708,
+        "stdDev": 10.730528223380944
+      },
+      "throughput": 14.247371555849305,
+      "details": {
+        "maxFollowers": 71,
+        "avgFollowers": 49,
+        "popularUserCount": 20
+      }
+    },
+    {
+      "operation": "viral_post_query",
+      "description": "Query LIKES with metadata (simulating popular content queries)",
+      "iterations": 1000,
+      "latency": {
+        "min": 62.042,
+        "max": 232.917,
+        "mean": 80.008015,
+        "median": 78.209,
+        "p90": 88.375,
+        "p95": 98.0,
+        "p99": 125.041,
+        "stdDev": 12.614177531443538
+      },
+      "throughput": 12.498747781706621,
+      "details": {
+        "maxLikesOnViralPost": 322,
+        "viralPostCount": 100
+      }
+    }
+  ],
+  "totalDurationMs": 9288,
+  "summary": "=== AOEE Benchmark Summary ===\n\nData Generation:\n  - 1,000 users, 2,000 posts, 10 groups\n  - 125,657 total edges in 8,622 ms (14574 edges/sec)\n  - Edge breakdown: 47,477 follows, 18,912 friends, 58,142 likes, 1,126 members\n\nOperation Performance (latency in \u00b5s):\n  Operation                          Median        P95        P99        Max   Throughput\n  ------------------------------------------------------------------------------------\n  neighbors_follows                    76.3      109.9      138.5      195.7         12/s\n  neighbors_likes_metadata             80.8      110.8      129.2      188.9         12/s\n  contains                             69.5      100.3      128.5      351.1         14/s\n  count                                65.4       87.1      109.0      712.0         15/s\n  intersection_mutual_friends          69.0       96.7      148.6      277.4         14/s\n  friend_of_friend                     68.3       85.3      100.7      160.6         14/s\n  large_list_popular_users             68.3       85.5      116.7      178.3         14/s\n  viral_post_query                     78.2       98.0      125.0      232.9         12/s\n"
+}

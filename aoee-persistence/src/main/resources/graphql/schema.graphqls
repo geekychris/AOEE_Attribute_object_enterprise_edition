@@ -1,0 +1,80 @@
+type Entity {
+    id: ID!
+    entityType: String!
+    name: String
+    createdAt: String
+    updatedAt: String
+    outgoingEdges(edgeType: String, limit: Int): [Edge!]!
+    incomingEdges(edgeType: String, limit: Int): [Edge!]!
+    neighborCount(edgeType: String!): Int!
+}
+
+type Edge {
+    id: ID!
+    srcId: ID!
+    edgeType: String!
+    dstId: ID!
+    timestampNs: String
+    metadata: Int
+    createdAt: String
+    src: Entity
+    dst: Entity
+}
+
+type NeighborsResult {
+    src: ID!
+    edgeType: String!
+    neighbors: [ID!]!
+    count: Int!
+}
+
+type MutualResult {
+    id1: ID!
+    id2: ID!
+    edgeType: String!
+    mutual: [ID!]!
+    count: Int!
+}
+
+type Stats {
+    totalEntities: Int!
+    totalEdges: Int!
+    entityTypes: [String!]!
+    edgeTypes: [String!]!
+}
+
+type Query {
+    # Entity queries
+    entity(id: ID!): Entity
+    entities(type: String, page: Int, size: Int): [Entity!]!
+    entityTypes: [String!]!
+    entityCount(type: String): Int!
+
+    # Edge queries
+    edge(src: ID!, edgeType: String!, dst: ID!): Edge
+    edges(src: ID!, edgeType: String!, limit: Int): [Edge!]!
+    edgeExists(src: ID!, edgeType: String!, dst: ID!): Boolean!
+    edgeTypes: [String!]!
+    edgeCount(src: ID, type: String): Int!
+
+    # Graph queries
+    neighbors(src: ID!, edgeType: String!, limit: Int): NeighborsResult!
+    reverseNeighbors(dst: ID!, edgeType: String!): NeighborsResult!
+    mutualConnections(id1: ID!, id2: ID!, edgeType: String): MutualResult!
+
+    # Stats
+    stats: Stats!
+}
+
+type Mutation {
+    # Entity mutations
+    createEntity(id: ID!, entityType: String!, name: String): Entity!
+    deleteEntity(id: ID!): Boolean!
+
+    # Edge mutations  
+    createEdge(src: ID!, edgeType: String!, dst: ID!, metadata: Int): Edge!
+    deleteEdge(src: ID!, edgeType: String!, dst: ID!): Boolean!
+
+    # Bulk operations
+    importDataset(content: String!): Int!
+}

@@ -27,6 +27,7 @@ pub struct StoredEdge {
     pub dst: EntityId,
     pub timestamp: u64,
     pub deleted: bool,
+    pub metadata: u8,
 }
 
 impl StoredEdge {
@@ -35,6 +36,16 @@ impl StoredEdge {
             dst,
             timestamp,
             deleted: false,
+            metadata: 0,
+        }
+    }
+
+    pub fn with_metadata(dst: EntityId, timestamp: u64, metadata: u8) -> Self {
+        StoredEdge {
+            dst,
+            timestamp,
+            deleted: false,
+            metadata,
         }
     }
 
@@ -43,6 +54,7 @@ impl StoredEdge {
             dst,
             timestamp,
             deleted: true,
+            metadata: 0,
         }
     }
 }
@@ -63,7 +75,20 @@ pub trait EdgeStore: Send + Sync {
     /// Persist a new edge.
     ///
     /// If the edge already exists, this updates the timestamp.
-    async fn persist_edge(&self, key: EdgeKey, dst: EntityId, timestamp: u64) -> Result<()>;
+    async fn persist_edge(&self, key: EdgeKey, dst: EntityId, timestamp: u64) -> Result<()> {
+        self.persist_edge_with_metadata(key, dst, timestamp, 0).await
+    }
+
+    /// Persist a new edge with metadata.
+    ///
+    /// If the edge already exists, this updates the timestamp and metadata.
+    async fn persist_edge_with_metadata(
+        &self,
+        key: EdgeKey,
+        dst: EntityId,
+        timestamp: u64,
+        metadata: u8,
+    ) -> Result<()>;
 
     /// Persist a deletion (tombstone).
     ///

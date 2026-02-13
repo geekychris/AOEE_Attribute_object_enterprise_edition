@@ -315,4 +315,47 @@ impl<S: EdgeStore + 'static> Aoee for AoeeService<S> {
             per_shard: per_shard_stats,
         }))
     }
+
+    async fn flush_cache(
+        &self,
+        request: Request<FlushCacheRequest>,
+    ) -> Result<Response<FlushCacheResponse>, Status> {
+        let req = request.into_inner();
+        
+        // Flush all entries (storage write happens via write-through)
+        let entries = self.manager.flush_all().await;
+        
+        // Optionally clear cache after flush
+        if req.clear_after_flush {
+            self.manager.clear_all_caches().await;
+        }
+        
+        Ok(Response::new(FlushCacheResponse {
+            entries_flushed: entries as u64,
+            success: true,
+        }))
+    }
+
+    async fn clear_cache(
+        &self,
+        request: Request<ClearCacheRequest>,
+    ) -> Result<Response<ClearCacheResponse>, Status> {
+        let req = request.into_inner();
+        
+        let entries_cleared = if req.shard_id > 0 {
+            // Clear specific shard
+            self.manager
+                .clear_shard_cache(req.shard_id)
+                .await
+                .map_err(|e| Status::not_found(e.to_string()))?
+        } else {
+            // Clear all shards
+            self.manager.clear_all_caches().await
+        };
+        
+        Ok(Response::new(ClearCacheResponse {
+            entries_cleared: entries_cleared as u64,
+            success: true,
+        }))
+    }
 }

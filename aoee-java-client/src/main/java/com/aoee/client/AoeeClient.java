@@ -295,6 +295,14 @@ public class AoeeClient implements AutoCloseable {
     }
 
     /**
+     * Find friend-of-friend candidates with configuration (no exclusions).
+     */
+    public FofResult friendOfFriend(long source, int edgeType, int fanoutCap,
+                                     int maxResults, int minScore) {
+        return friendOfFriend(source, edgeType, fanoutCap, maxResults, minScore, List.of());
+    }
+
+    /**
      * Find friend-of-friend candidates with full configuration.
      *
      * @param source Source entity ID

@@ -26,6 +26,10 @@ service Aoee {
     
     // Stats
     rpc Stats(StatsRequest) returns (StatsResponse);
+    
+    // Cache management
+    rpc FlushCache(FlushCacheRequest) returns (FlushCacheResponse);
+    rpc ClearCache(ClearCacheRequest) returns (ClearCacheResponse);
 }
 
 // Edge key: (src, edge_type)
@@ -151,4 +155,24 @@ message ShardStats {
 message StatsResponse {
     ShardStats aggregated = 1;
     repeated ShardStats per_shard = 2;
+}
+
+// Cache management - flush forces write to storage, clear removes from cache
+message FlushCacheRequest {
+    bool clear_after_flush = 1;  // If true, also clear cache after flushing
+}
+
+message FlushCacheResponse {
+    uint64 entries_flushed = 1;
+    bool success = 2;
+}
+
+message ClearCacheRequest {
+    // Optional: clear only specific shard (0 = all shards)
+    uint32 shard_id = 1;
+}
+
+message ClearCacheResponse {
+    uint64 entries_cleared = 1;
+    bool success = 2;
 }
