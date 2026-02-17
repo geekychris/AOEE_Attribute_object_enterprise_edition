@@ -4,6 +4,7 @@ import GraphExplorer from './components/GraphExplorer';
 import QueryBuilder from './components/QueryBuilder';
 import EdgeManager from './components/EdgeManager';
 import DatasetLoader from './components/DatasetLoader';
+import AdminTools from './components/AdminTools';
 import './App.css';
 
 function App() {
@@ -18,6 +19,7 @@ function App() {
             <li><NavLink to="/query">Query Builder</NavLink></li>
             <li><NavLink to="/edges">Edge Manager</NavLink></li>
             <li><NavLink to="/dataset">Dataset Loader</NavLink></li>
+            <li><NavLink to="/admin">Admin Tools</NavLink></li>
           </ul>
         </nav>
         <main className="content">
@@ -27,6 +29,7 @@ function App() {
             <Route path="/query" element={<QueryBuilder />} />
             <Route path="/edges" element={<EdgeManager />} />
             <Route path="/dataset" element={<DatasetLoader />} />
+            <Route path="/admin" element={<AdminTools />} />
           </Routes>
         </main>
       </div>

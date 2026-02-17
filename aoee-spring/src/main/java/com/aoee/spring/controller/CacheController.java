@@ -73,6 +73,60 @@ public class CacheController {
     }
     
     /**
+     * Flush the AOEE cache to storage.
+     * 
+     * @param clearAfterFlush If true, also clears the cache after flushing
+     */
+    @PostMapping("/flush")
+    public ResponseEntity<Map<String, Object>> flushCache(
+            @RequestParam(defaultValue = "false") boolean clearAfterFlush) {
+        logger.info("Flushing AOEE cache (clearAfterFlush={})", clearAfterFlush);
+        
+        try {
+            var result = aoeeClient.flushCache(clearAfterFlush);
+            logger.info("Cache flush complete: {} entries flushed", result.entriesAffected());
+            
+            return ResponseEntity.ok(Map.of(
+                "success", result.success(),
+                "entriesFlushed", result.entriesAffected(),
+                "clearedAfterFlush", clearAfterFlush
+            ));
+        } catch (Exception e) {
+            logger.error("Cache flush failed", e);
+            return ResponseEntity.ok(Map.of(
+                "success", false,
+                "message", e.getMessage()
+            ));
+        }
+    }
+    
+    /**
+     * Clear the AOEE cache (removes all entries from memory).
+     */
+    @PostMapping("/clear")
+    public ResponseEntity<Map<String, Object>> clearCache(
+            @RequestParam(defaultValue = "0") int shardId) {
+        logger.info("Clearing AOEE cache (shardId={})", shardId);
+        
+        try {
+            var result = aoeeClient.clearCache(shardId);
+            logger.info("Cache clear complete: {} entries cleared", result.entriesAffected());
+            
+            return ResponseEntity.ok(Map.of(
+                "success", result.success(),
+                "entriesCleared", result.entriesAffected(),
+                "shardId", shardId
+            ));
+        } catch (Exception e) {
+            logger.error("Cache clear failed", e);
+            return ResponseEntity.ok(Map.of(
+                "success", false,
+                "message", e.getMessage()
+            ));
+        }
+    }
+    
+    /**
      * Get persistence status and stats.
      */
     @GetMapping("/persistence/status")

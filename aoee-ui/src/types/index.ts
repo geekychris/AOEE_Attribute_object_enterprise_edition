@@ -114,6 +114,109 @@ export interface DatasetLoadResponse {
   elapsedMs: number;
 }
 
+// Cache management types
+export interface CacheFlushResponse {
+  success: boolean;
+  entriesFlushed: number;
+  clearedAfterFlush: boolean;
+  message?: string;
+}
+
+export interface CacheClearResponse {
+  success: boolean;
+  entriesCleared: number;
+  shardId: number;
+  message?: string;
+}
+
+export interface CacheWarmResponse {
+  success: boolean;
+  edgesLoaded: number;
+  elapsedMs: number;
+  message?: string;
+}
+
+export interface PersistenceStatus {
+  enabled: boolean;
+  available: boolean;
+  writeThrough: boolean;
+  stats?: Record<string, unknown>;
+}
+
+// Benchmark types
+export interface BenchmarkConfig {
+  numUsers: number;
+  avgFollowsPerUser: number;
+  maxFollowsPerUser: number;
+  popularUserRatio: number;
+  popularUserFollowerMultiplier: number;
+  numPosts: number;
+  avgLikesPerPost: number;
+  maxLikesPerPost: number;
+  viralPostRatio: number;
+  avgFriendsPerUser: number;
+  numGroups: number;
+  avgMembersPerGroup: number;
+  warmupIterations: number;
+  benchmarkIterations: number;
+  includeMetadata: boolean;
+}
+
+export interface LatencyStats {
+  min: number;
+  max: number;
+  mean: number;
+  median: number;
+  p90: number;
+  p95: number;
+  p99: number;
+  stdDev: number;
+}
+
+export interface OperationResult {
+  operation: string;
+  description: string;
+  iterations: number;
+  latency: LatencyStats;
+  throughput: number;
+  details: Record<string, unknown>;
+}
+
+export interface DataGenerationStats {
+  usersCreated: number;
+  postsCreated: number;
+  groupsCreated: number;
+  followEdges: number;
+  friendEdges: number;
+  likeEdges: number;
+  memberEdges: number;
+  totalEdges: number;
+  durationMs: number;
+  edgesPerSecond: number;
+}
+
+export interface BenchmarkResult {
+  config: BenchmarkConfig;
+  dataStats: DataGenerationStats;
+  operations: OperationResult[];
+  totalDurationMs: number;
+  summary: string;
+}
+
+export interface BenchmarkPresets {
+  small: BenchmarkConfig;
+  medium: BenchmarkConfig;
+  large: BenchmarkConfig;
+}
+
+export interface BenchmarkDataStats {
+  users: number;
+  posts: number;
+  groups: number;
+  popularUsers: number;
+  viralPosts: number;
+}
+
 // Graph visualization types
 export interface GraphNode {
   id: string;

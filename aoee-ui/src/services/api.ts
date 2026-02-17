@@ -10,6 +10,14 @@ import type {
   HealthResponse,
   DatasetParseResult,
   DatasetLoadResponse,
+  CacheFlushResponse,
+  CacheClearResponse,
+  CacheWarmResponse,
+  PersistenceStatus,
+  BenchmarkResult,
+  BenchmarkPresets,
+  BenchmarkDataStats,
+  DataGenerationStats,
 } from '../types';
 
 const API_BASE = 'http://localhost:8080/api';
@@ -133,5 +141,51 @@ export const loadDataset = async (content: string): Promise<DatasetLoadResponse>
 
 export const getSampleDataset = async (): Promise<{ format: string; sample: string }> => {
   const response = await api.get('/dataset/sample');
+  return response.data;
+};
+
+// Cache management
+export const flushCache = async (clearAfterFlush = false): Promise<CacheFlushResponse> => {
+  const response = await api.post('/cache/flush', null, { 
+    params: { clearAfterFlush } 
+  });
+  return response.data;
+};
+
+export const clearCache = async (shardId = 0): Promise<CacheClearResponse> => {
+  const response = await api.post('/cache/clear', null, { 
+    params: { shardId } 
+  });
+  return response.data;
+};
+
+export const warmCache = async (): Promise<CacheWarmResponse> => {
+  const response = await api.post('/cache/warm');
+  return response.data;
+};
+
+export const getPersistenceStatus = async (): Promise<PersistenceStatus> => {
+  const response = await api.get('/cache/persistence/status');
+  return response.data;
+};
+
+// Benchmark
+export const runBenchmark = async (size: 'small' | 'medium' | 'large'): Promise<BenchmarkResult> => {
+  const response = await api.post(`/benchmark/run/${size}`);
+  return response.data;
+};
+
+export const generateBenchmarkData = async (size: 'small' | 'medium' | 'large'): Promise<DataGenerationStats> => {
+  const response = await api.post(`/benchmark/generate/${size}`);
+  return response.data;
+};
+
+export const getBenchmarkPresets = async (): Promise<BenchmarkPresets> => {
+  const response = await api.get('/benchmark/presets');
+  return response.data;
+};
+
+export const getBenchmarkStats = async (): Promise<BenchmarkDataStats> => {
+  const response = await api.get('/benchmark/stats');
   return response.data;
 };

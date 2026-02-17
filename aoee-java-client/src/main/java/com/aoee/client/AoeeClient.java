@@ -443,6 +443,64 @@ public class AoeeClient implements AutoCloseable {
     }
 
     // ========================================================================
+    // Cache Management
+    // ========================================================================
+
+    /**
+     * Flush the AOEE cache to storage.
+     * 
+     * @param clearAfterFlush If true, also clears the cache after flushing
+     * @return CacheResult with entries flushed count
+     */
+    public CacheResult flushCache(boolean clearAfterFlush) {
+        try {
+            FlushCacheRequest request = FlushCacheRequest.newBuilder()
+                    .setClearAfterFlush(clearAfterFlush)
+                    .build();
+
+            FlushCacheResponse response = blockingStub.flushCache(request);
+            return new CacheResult(response.getEntriesFlushed(), response.getSuccess(), "flush");
+        } catch (StatusRuntimeException e) {
+            logger.error("Failed to flush cache", e);
+            throw new AoeeClientException("Failed to flush cache", e);
+        }
+    }
+
+    /**
+     * Clear the AOEE cache (removes all entries from memory).
+     * 
+     * @return CacheResult with entries cleared count
+     */
+    public CacheResult clearCache() {
+        return clearCache(0);
+    }
+
+    /**
+     * Clear a specific shard's cache.
+     * 
+     * @param shardId The shard ID to clear (0 = all shards)
+     * @return CacheResult with entries cleared count
+     */
+    public CacheResult clearCache(int shardId) {
+        try {
+            ClearCacheRequest request = ClearCacheRequest.newBuilder()
+                    .setShardId(shardId)
+                    .build();
+
+            ClearCacheResponse response = blockingStub.clearCache(request);
+            return new CacheResult(response.getEntriesCleared(), response.getSuccess(), "clear");
+        } catch (StatusRuntimeException e) {
+            logger.error("Failed to clear cache", e);
+            throw new AoeeClientException("Failed to clear cache", e);
+        }
+    }
+
+    /**
+     * Result of a cache operation (flush or clear).
+     */
+    public record CacheResult(long entriesAffected, boolean success, String operation) {}
+
+    // ========================================================================
     // Connection Management
     // ========================================================================
 
