@@ -78,6 +78,7 @@ dependencies = [
  "aoee-shard",
  "aoee-storage",
  "async-trait",
+ "parking_lot",
  "prometheus",
  "prost",
  "serde",

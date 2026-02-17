@@ -2,15 +2,22 @@
 
 use crate::proto::aoee_server::Aoee;
 use crate::proto::*;
-use aoee_core::{EdgeKey, EdgeType, EntityId, EntityType, FofConfig, FofQuery};
+use aoee_core::{EdgeKey, EdgeType, EntityId, EntityType, IdGenerator, FofConfig, FofQuery};
 use aoee_shard::{ShardManager, manager::ManagerConfig};
 use aoee_storage::{EdgeStore, InMemoryStore};
+use std::collections::HashMap;
 use std::sync::Arc;
+use parking_lot::RwLock;
 use tonic::{Request, Response, Status};
+
+/// Maximum IDs that can be generated in a single request
+const MAX_GENERATE_IDS: u32 = 10_000;
 
 /// AOEE gRPC service
 pub struct AoeeService<S: EdgeStore + 'static> {
     manager: Arc<ShardManager<S>>,
+    /// ID generators per entity type (lazily created)
+    id_generators: Arc<RwLock<HashMap<u16, IdGenerator>>>,
 }
 
 impl AoeeService<InMemoryStore> {
@@ -20,6 +27,7 @@ impl AoeeService<InMemoryStore> {
         manager.initialize().await;
         AoeeService {
             manager: Arc::new(manager),
+            id_generators: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 }
@@ -34,7 +42,32 @@ impl<S: EdgeStore + 'static> AoeeService<S> {
         manager.initialize().await;
         AoeeService {
             manager: Arc::new(manager),
+            id_generators: Arc::new(RwLock::new(HashMap::new())),
         }
+    }
+
+    /// Get or create an ID generator for the given entity type
+    fn get_or_create_generator(&self, entity_type: EntityType) -> IdGenerator {
+        let type_code = entity_type.as_raw();
+        
+        // Try read lock first
+        {
+            let generators = self.id_generators.read();
+            if let Some(gen) = generators.get(&type_code) {
+                return gen.clone();
+            }
+        }
+        
+        // Need to create - upgrade to write lock
+        let mut generators = self.id_generators.write();
+        // Double-check after acquiring write lock
+        if let Some(gen) = generators.get(&type_code) {
+            return gen.clone();
+        }
+        
+        let gen = IdGenerator::new(entity_type);
+        generators.insert(type_code, gen.clone());
+        gen
     }
 
     fn proto_to_edge_key(key: Option<EdgeKey_>) -> Result<EdgeKey, Status> {
@@ -356,6 +389,49 @@ impl<S: EdgeStore + 'static> Aoee for AoeeService<S> {
         Ok(Response::new(ClearCacheResponse {
             entries_cleared: entries_cleared as u64,
             success: true,
+        }))
+    }
+
+    async fn generate_ids(
+        &self,
+        request: Request<GenerateIdsRequest>,
+    ) -> Result<Response<GenerateIdsResponse>, Status> {
+        let req = request.into_inner();
+        
+        // Validate entity type
+        let entity_type = EntityType::from_raw(req.entity_type as u16);
+        if entity_type == EntityType::Unknown {
+            return Err(Status::invalid_argument(format!(
+                "Invalid entity type: {}. Valid types: 0=User, 1=Post, 2=Comment, 3=Photo, etc.",
+                req.entity_type
+            )));
+        }
+        
+        // Validate count (default to 1, cap at MAX_GENERATE_IDS)
+        let count = if req.count == 0 {
+            1
+        } else if req.count > MAX_GENERATE_IDS {
+            return Err(Status::invalid_argument(format!(
+                "Count {} exceeds maximum of {}",
+                req.count, MAX_GENERATE_IDS
+            )));
+        } else {
+            req.count
+        };
+        
+        // Get or create generator for this type
+        let generator = self.get_or_create_generator(entity_type);
+        
+        // Generate IDs
+        let ids: Vec<u64> = generator
+            .next_ids(count as usize)
+            .into_iter()
+            .map(|id| id.as_raw())
+            .collect();
+        
+        Ok(Response::new(GenerateIdsResponse {
+            ids,
+            entity_type: entity_type.as_raw() as u32,
         }))
     }
 }

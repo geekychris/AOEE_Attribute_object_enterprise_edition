@@ -26,6 +26,13 @@ service Aoee {
     
     // Stats
     rpc Stats(StatsRequest) returns (StatsResponse);
+    
+    // Cache management
+    rpc FlushCache(FlushCacheRequest) returns (FlushCacheResponse);
+    rpc ClearCache(ClearCacheRequest) returns (ClearCacheResponse);
+    
+    // ID generation
+    rpc GenerateIds(GenerateIdsRequest) returns (GenerateIdsResponse);
 }
 
 // Edge key: (src, edge_type)
@@ -151,4 +158,40 @@ message ShardStats {
 message StatsResponse {
     ShardStats aggregated = 1;
     repeated ShardStats per_shard = 2;
+}
+
+// Cache management - flush forces write to storage, clear removes from cache
+message FlushCacheRequest {
+    bool clear_after_flush = 1;  // If true, also clear cache after flushing
+}
+
+message FlushCacheResponse {
+    uint64 entries_flushed = 1;
+    bool success = 2;
+}
+
+message ClearCacheRequest {
+    // Optional: clear only specific shard (0 = all shards)
+    uint32 shard_id = 1;
+}
+
+message ClearCacheResponse {
+    uint64 entries_cleared = 1;
+    bool success = 2;
+}
+
+// ID generation request
+message GenerateIdsRequest {
+    // Entity type code (0=User, 1=Post, 2=Comment, 3=Photo, etc.)
+    // See docs/ENTITY_ID_SYSTEM.md for full list
+    uint32 entity_type = 1;
+    // Number of IDs to generate (default 1, max 10000)
+    uint32 count = 2;
+}
+
+message GenerateIdsResponse {
+    // Generated IDs (typed 64-bit values with type in upper 16 bits)
+    repeated uint64 ids = 1;
+    // The entity type that was used
+    uint32 entity_type = 2;
 }

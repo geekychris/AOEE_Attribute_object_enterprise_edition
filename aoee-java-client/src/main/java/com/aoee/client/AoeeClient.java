@@ -341,6 +341,63 @@ public class AoeeClient implements AutoCloseable {
     }
 
     // ========================================================================
+    // ID Generation
+    // ========================================================================
+
+    /**
+     * Generate a single new ID of the specified type from the server.
+     * 
+     * Use this when you need centralized ID generation (e.g., for consistency
+     * across distributed services). For local ID generation without network
+     * calls, use {@link IdGenerator} instead.
+     * 
+     * @param entityType The type of entity to generate an ID for
+     * @return A new EntityId
+     */
+    public EntityId generateId(EntityType entityType) {
+        return generateIds(entityType, 1).get(0);
+    }
+
+    /**
+     * Generate a single new ID of the specified type code from the server.
+     */
+    public EntityId generateId(int entityTypeCode) {
+        return generateId(EntityType.fromCode(entityTypeCode));
+    }
+
+    /**
+     * Generate multiple new IDs of the specified type from the server.
+     * 
+     * @param entityType The type of entity to generate IDs for
+     * @param count Number of IDs to generate (1-10000)
+     * @return List of new EntityIds
+     */
+    public List<EntityId> generateIds(EntityType entityType, int count) {
+        try {
+            GenerateIdsRequest request = GenerateIdsRequest.newBuilder()
+                    .setEntityType(entityType.getCode())
+                    .setCount(count)
+                    .build();
+
+            GenerateIdsResponse response = blockingStub.generateIds(request);
+            
+            return response.getIdsList().stream()
+                    .map(EntityId::fromRaw)
+                    .toList();
+        } catch (StatusRuntimeException e) {
+            logger.error("Failed to generate {} IDs of type {}", count, entityType, e);
+            throw new AoeeClientException("Failed to generate IDs", e);
+        }
+    }
+
+    /**
+     * Generate multiple new IDs of the specified type code from the server.
+     */
+    public List<EntityId> generateIds(int entityTypeCode, int count) {
+        return generateIds(EntityType.fromCode(entityTypeCode), count);
+    }
+
+    // ========================================================================
     // Stats
     // ========================================================================
 

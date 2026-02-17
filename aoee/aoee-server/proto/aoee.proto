@@ -30,6 +30,9 @@ service Aoee {
     // Cache management
     rpc FlushCache(FlushCacheRequest) returns (FlushCacheResponse);
     rpc ClearCache(ClearCacheRequest) returns (ClearCacheResponse);
+    
+    // ID generation
+    rpc GenerateIds(GenerateIdsRequest) returns (GenerateIdsResponse);
 }
 
 // Edge key: (src, edge_type)
@@ -175,4 +178,20 @@ message ClearCacheRequest {
 message ClearCacheResponse {
     uint64 entries_cleared = 1;
     bool success = 2;
+}
+
+// ID generation request
+message GenerateIdsRequest {
+    // Entity type code (0=User, 1=Post, 2=Comment, 3=Photo, etc.)
+    // See docs/ENTITY_ID_SYSTEM.md for full list
+    uint32 entity_type = 1;
+    // Number of IDs to generate (default 1, max 10000)
+    uint32 count = 2;
+}
+
+message GenerateIdsResponse {
+    // Generated IDs (typed 64-bit values with type in upper 16 bits)
+    repeated uint64 ids = 1;
+    // The entity type that was used
+    uint32 entity_type = 2;
 }
