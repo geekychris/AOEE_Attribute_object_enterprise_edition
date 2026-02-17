@@ -643,7 +643,10 @@ public class BenchmarkService {
         double p99 = percentile(latencies, 99);
         double stdDev = stdDev(latencies, mean);
         
-        double throughput = iterations * 1_000_000.0 / Arrays.stream(latenciesNanos).sum();
+        // throughput = iterations / total_seconds
+        // total_seconds = sum_nanos / 1e9
+        // so: throughput = iterations * 1e9 / sum_nanos
+        double throughput = iterations * 1_000_000_000.0 / Arrays.stream(latenciesNanos).sum();
         
         return new OperationResult(
             operation,
