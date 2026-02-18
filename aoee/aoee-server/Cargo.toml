@@ -6,21 +6,29 @@ authors.workspace = true
 license.workspace = true
 description = "AOEE gRPC server"
 
+[features]
+default = ["all-backends"]
+rocksdb-backend = ["aoee-storage/rocksdb-backend"]
+http-backend = ["aoee-storage/http-backend"]
+all-backends = ["rocksdb-backend", "http-backend"]
+
 [dependencies]
 aoee-core.workspace = true
-aoee-storage.workspace = true
+aoee-storage = { workspace = true }
 aoee-shard.workspace = true
 thiserror.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
 tokio.workspace = true
 tonic.workspace = true
+tonic-reflection = "0.11"
 prost.workspace = true
 serde = { workspace = true, features = ["derive"] }
 toml.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 prometheus.workspace = true
+parking_lot.workspace = true
 
 [build-dependencies]
 tonic-build = "0.11"

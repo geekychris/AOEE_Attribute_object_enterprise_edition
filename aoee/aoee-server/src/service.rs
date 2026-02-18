@@ -2,15 +2,31 @@
 
 use crate::proto::aoee_server::Aoee;
 use crate::proto::*;
-use aoee_core::{EdgeKey, EdgeType, EntityId, EntityType, FofConfig, FofQuery};
+use aoee_core::{EdgeKey, EdgeType, EntityId, EntityType, IdGenerator, FofConfig, FofQuery};
 use aoee_shard::{ShardManager, manager::ManagerConfig};
 use aoee_storage::{EdgeStore, InMemoryStore};
+use std::collections::HashMap;
 use std::sync::Arc;
+use parking_lot::RwLock;
 use tonic::{Request, Response, Status};
+
+/// Maximum IDs that can be generated in a single request
+const MAX_GENERATE_IDS: u32 = 10_000;
+
+/// Maximum edges that can be added in a single batch request
+const MAX_BATCH_EDGES: usize = 10_000;
+
+/// Maximum entities that can be created in a single batch request
+const MAX_BATCH_ENTITIES: usize = 10_000;
 
 /// AOEE gRPC service
 pub struct AoeeService<S: EdgeStore + 'static> {
     manager: Arc<ShardManager<S>>,
+    /// ID generators per entity type (lazily created)
+    id_generators: Arc<RwLock<HashMap<u16, IdGenerator>>>,
+    /// HTTP client for entity persistence (only set for HTTP backend)
+    #[cfg(feature = "http-backend")]
+    http_store: Option<Arc<aoee_storage::HttpStore>>,
 }
 
 impl AoeeService<InMemoryStore> {
@@ -20,6 +36,9 @@ impl AoeeService<InMemoryStore> {
         manager.initialize().await;
         AoeeService {
             manager: Arc::new(manager),
+            id_generators: Arc::new(RwLock::new(HashMap::new())),
+            #[cfg(feature = "http-backend")]
+            http_store: None,
         }
     }
 }
@@ -34,7 +53,41 @@ impl<S: EdgeStore + 'static> AoeeService<S> {
         manager.initialize().await;
         AoeeService {
             manager: Arc::new(manager),
+            id_generators: Arc::new(RwLock::new(HashMap::new())),
+            #[cfg(feature = "http-backend")]
+            http_store: None,
         }
+    }
+
+    /// Set the HTTP store for entity persistence (HTTP backend only)
+    #[cfg(feature = "http-backend")]
+    pub fn with_http_store(mut self, store: Arc<aoee_storage::HttpStore>) -> Self {
+        self.http_store = Some(store);
+        self
+    }
+
+    /// Get or create an ID generator for the given entity type
+    fn get_or_create_generator(&self, entity_type: EntityType) -> IdGenerator {
+        let type_code = entity_type.as_raw();
+        
+        // Try read lock first
+        {
+            let generators = self.id_generators.read();
+            if let Some(gen) = generators.get(&type_code) {
+                return gen.clone();
+            }
+        }
+        
+        // Need to create - upgrade to write lock
+        let mut generators = self.id_generators.write();
+        // Double-check after acquiring write lock
+        if let Some(gen) = generators.get(&type_code) {
+            return gen.clone();
+        }
+        
+        let gen = IdGenerator::new(entity_type);
+        generators.insert(type_code, gen.clone());
+        gen
     }
 
     fn proto_to_edge_key(key: Option<EdgeKey_>) -> Result<EdgeKey, Status> {
@@ -65,6 +118,51 @@ impl<S: EdgeStore + 'static> Aoee for AoeeService<S> {
         Ok(Response::new(AddEdgeResponse { 
             success: true,
             timestamp,
+        }))
+    }
+
+    async fn add_edges(
+        &self,
+        request: Request<AddEdgesRequest>,
+    ) -> Result<Response<AddEdgesResponse>, Status> {
+        let req = request.into_inner();
+        let edges = req.edges;
+        
+        if edges.len() > MAX_BATCH_EDGES {
+            return Err(Status::invalid_argument(format!(
+                "Too many edges: {} exceeds maximum of {}",
+                edges.len(), MAX_BATCH_EDGES
+            )));
+        }
+        
+        let mut added: u64 = 0;
+        let mut failed: u64 = 0;
+        
+        for edge in edges {
+            let edge_type = match EdgeType::from_raw(edge.edge_type as u16) {
+                Some(et) => et,
+                None => {
+                    failed += 1;
+                    continue;
+                }
+            };
+            
+            let key = EdgeKey::new(EntityId::from_raw(edge.src), edge_type);
+            let dst = EntityId::from_raw(edge.dst);
+            
+            match self.manager
+                .add_edge_with_metadata(key, dst, edge.timestamp, edge.metadata as u8)
+                .await
+            {
+                Ok(_) => added += 1,
+                Err(_) => failed += 1,
+            }
+        }
+        
+        Ok(Response::new(AddEdgesResponse {
+            edges_added: added,
+            edges_failed: failed,
+            success: failed == 0,
         }))
     }
 
@@ -314,5 +412,153 @@ impl<S: EdgeStore + 'static> Aoee for AoeeService<S> {
             }),
             per_shard: per_shard_stats,
         }))
+    }
+
+    async fn flush_cache(
+        &self,
+        request: Request<FlushCacheRequest>,
+    ) -> Result<Response<FlushCacheResponse>, Status> {
+        let req = request.into_inner();
+        
+        // Flush all entries (storage write happens via write-through)
+        let entries = self.manager.flush_all().await;
+        
+        // Optionally clear cache after flush
+        if req.clear_after_flush {
+            self.manager.clear_all_caches().await;
+        }
+        
+        Ok(Response::new(FlushCacheResponse {
+            entries_flushed: entries as u64,
+            success: true,
+        }))
+    }
+
+    async fn clear_cache(
+        &self,
+        request: Request<ClearCacheRequest>,
+    ) -> Result<Response<ClearCacheResponse>, Status> {
+        let req = request.into_inner();
+        
+        let entries_cleared = if req.shard_id > 0 {
+            // Clear specific shard
+            self.manager
+                .clear_shard_cache(req.shard_id)
+                .await
+                .map_err(|e| Status::not_found(e.to_string()))?
+        } else {
+            // Clear all shards
+            self.manager.clear_all_caches().await
+        };
+        
+        Ok(Response::new(ClearCacheResponse {
+            entries_cleared: entries_cleared as u64,
+            success: true,
+        }))
+    }
+
+    async fn generate_ids(
+        &self,
+        request: Request<GenerateIdsRequest>,
+    ) -> Result<Response<GenerateIdsResponse>, Status> {
+        let req = request.into_inner();
+        
+        // Validate entity type
+        let entity_type = EntityType::from_raw(req.entity_type as u16);
+        if entity_type == EntityType::Unknown {
+            return Err(Status::invalid_argument(format!(
+                "Invalid entity type: {}. Valid types: 0=User, 1=Post, 2=Comment, 3=Photo, etc.",
+                req.entity_type
+            )));
+        }
+        
+        // Validate count (default to 1, cap at MAX_GENERATE_IDS)
+        let count = if req.count == 0 {
+            1
+        } else if req.count > MAX_GENERATE_IDS {
+            return Err(Status::invalid_argument(format!(
+                "Count {} exceeds maximum of {}",
+                req.count, MAX_GENERATE_IDS
+            )));
+        } else {
+            req.count
+        };
+        
+        // Get or create generator for this type
+        let generator = self.get_or_create_generator(entity_type);
+        
+        // Generate IDs
+        let ids: Vec<u64> = generator
+            .next_ids(count as usize)
+            .into_iter()
+            .map(|id| id.as_raw())
+            .collect();
+        
+        Ok(Response::new(GenerateIdsResponse {
+            ids,
+            entity_type: entity_type.as_raw() as u32,
+        }))
+    }
+
+    async fn create_entity(
+        &self,
+        request: Request<CreateEntityRequest>,
+    ) -> Result<Response<CreateEntityResponse>, Status> {
+        #[cfg(feature = "http-backend")]
+        {
+            if let Some(ref http_store) = self.http_store {
+                let req = request.into_inner();
+                http_store
+                    .create_entity(req.id, &req.entity_type, &req.name)
+                    .await
+                    .map_err(|e| Status::internal(e.to_string()))?;
+                return Ok(Response::new(CreateEntityResponse {
+                    success: true,
+                    id: req.id,
+                }));
+            }
+        }
+        
+        // Entity persistence not available without HTTP backend
+        Err(Status::unimplemented("Entity persistence requires HTTP backend"))
+    }
+
+    async fn create_entities(
+        &self,
+        request: Request<CreateEntitiesRequest>,
+    ) -> Result<Response<CreateEntitiesResponse>, Status> {
+        #[cfg(feature = "http-backend")]
+        {
+            if let Some(ref http_store) = self.http_store {
+                let req = request.into_inner();
+                let entities = req.entities;
+                
+                if entities.len() > MAX_BATCH_ENTITIES {
+                    return Err(Status::invalid_argument(format!(
+                        "Too many entities: {} exceeds maximum of {}",
+                        entities.len(), MAX_BATCH_ENTITIES
+                    )));
+                }
+                
+                let batch: Vec<(u64, String, String)> = entities
+                    .into_iter()
+                    .map(|e| (e.id, e.entity_type, e.name))
+                    .collect();
+                
+                let (created, failed) = http_store
+                    .create_entities_batch(&batch)
+                    .await
+                    .map_err(|e| Status::internal(e.to_string()))?;
+                
+                return Ok(Response::new(CreateEntitiesResponse {
+                    entities_created: created,
+                    entities_failed: failed,
+                    success: failed == 0,
+                }));
+            }
+        }
+        
+        // Entity persistence not available without HTTP backend
+        Err(Status::unimplemented("Entity persistence requires HTTP backend"))
     }
 }

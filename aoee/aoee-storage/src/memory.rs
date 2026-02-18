@@ -6,6 +6,14 @@ use async_trait::async_trait;
 use parking_lot::RwLock;
 use std::collections::{BTreeMap, HashMap};
 
+/// Stored entry in memory
+#[derive(Debug, Clone, Copy)]
+struct MemoryEntry {
+    timestamp: u64,
+    deleted: bool,
+    metadata: u8,
+}
+
 /// In-memory edge storage.
 ///
 /// Uses a HashMap of BTreeMaps for efficient storage and retrieval.
@@ -14,8 +22,8 @@ use std::collections::{BTreeMap, HashMap};
 ///
 /// Thread-safe via RwLock.
 pub struct InMemoryStore {
-    /// Storage: EdgeKey -> (dst -> (timestamp, deleted))
-    data: RwLock<HashMap<EdgeKey, BTreeMap<EntityId, (u64, bool)>>>,
+    /// Storage: EdgeKey -> (dst -> entry)
+    data: RwLock<HashMap<EdgeKey, BTreeMap<EntityId, MemoryEntry>>>,
 }
 
 impl InMemoryStore {
@@ -52,17 +60,23 @@ impl Default for InMemoryStore {
 
 #[async_trait]
 impl EdgeStore for InMemoryStore {
-    async fn persist_edge(&self, key: EdgeKey, dst: EntityId, timestamp: u64) -> Result<()> {
+    async fn persist_edge_with_metadata(
+        &self,
+        key: EdgeKey,
+        dst: EntityId,
+        timestamp: u64,
+        metadata: u8,
+    ) -> Result<()> {
         let mut data = self.data.write();
         let edges = data.entry(key).or_insert_with(BTreeMap::new);
         
         // Only update if this is newer
         match edges.get(&dst) {
-            Some((existing_ts, _)) if *existing_ts >= timestamp => {
+            Some(entry) if entry.timestamp >= timestamp => {
                 // Existing entry is newer, skip
             }
             _ => {
-                edges.insert(dst, (timestamp, false));
+                edges.insert(dst, MemoryEntry { timestamp, deleted: false, metadata });
             }
         }
         
@@ -75,11 +89,11 @@ impl EdgeStore for InMemoryStore {
         
         // Only update if this is newer
         match edges.get(&dst) {
-            Some((existing_ts, _)) if *existing_ts >= timestamp => {
+            Some(entry) if entry.timestamp >= timestamp => {
                 // Existing entry is newer, skip
             }
             _ => {
-                edges.insert(dst, (timestamp, true));
+                edges.insert(dst, MemoryEntry { timestamp, deleted: true, metadata: 0 });
             }
         }
         
@@ -93,8 +107,13 @@ impl EdgeStore for InMemoryStore {
             Some(edges) => {
                 let result: Vec<StoredEdge> = edges
                     .iter()
-                    .filter(|(_, (_, deleted))| !deleted)
-                    .map(|(&dst, &(timestamp, deleted))| StoredEdge { dst, timestamp, deleted })
+                    .filter(|(_, entry)| !entry.deleted)
+                    .map(|(&dst, entry)| StoredEdge {
+                        dst,
+                        timestamp: entry.timestamp,
+                        deleted: entry.deleted,
+                        metadata: entry.metadata,
+                    })
                     .collect();
                 Ok(result)
             }
@@ -118,9 +137,14 @@ impl EdgeStore for InMemoryStore {
                 };
                 
                 let result: Vec<StoredEdge> = iter
-                    .filter(|(_, (_, deleted))| !deleted)
+                    .filter(|(_, entry)| !entry.deleted)
                     .take(limit)
-                    .map(|(&dst, &(timestamp, deleted))| StoredEdge { dst, timestamp, deleted })
+                    .map(|(&dst, entry)| StoredEdge {
+                        dst,
+                        timestamp: entry.timestamp,
+                        deleted: entry.deleted,
+                        metadata: entry.metadata,
+                    })
                     .collect();
                 Ok(result)
             }
@@ -134,7 +158,7 @@ impl EdgeStore for InMemoryStore {
         match data.get(&key) {
             Some(edges) => {
                 match edges.get(&dst) {
-                    Some((_, deleted)) => Ok(!deleted),
+                    Some(entry) => Ok(!entry.deleted),
                     None => Ok(false),
                 }
             }
@@ -147,7 +171,7 @@ impl EdgeStore for InMemoryStore {
         
         match data.get(&key) {
             Some(edges) => {
-                let count = edges.values().filter(|(_, deleted)| !deleted).count();
+                let count = edges.values().filter(|entry| !entry.deleted).count();
                 Ok(count)
             }
             None => Ok(0),
@@ -172,11 +196,11 @@ impl EdgeStore for InMemoryStore {
             let edges = data.entry(key).or_insert_with(BTreeMap::new);
             
             match edges.get(&dst) {
-                Some((existing_ts, _)) if *existing_ts >= timestamp => {
+                Some(entry) if entry.timestamp >= timestamp => {
                     // Existing entry is newer, skip
                 }
                 _ => {
-                    edges.insert(dst, (timestamp, is_delete));
+                    edges.insert(dst, MemoryEntry { timestamp, deleted: is_delete, metadata: 0 });
                 }
             }
         }
@@ -191,8 +215,8 @@ impl EdgeStore for InMemoryStore {
         let mut total_tombstones = 0;
         
         for edges in data.values() {
-            for (_, deleted) in edges.values() {
-                if *deleted {
+            for entry in edges.values() {
+                if entry.deleted {
                     total_tombstones += 1;
                 } else {
                     total_edges += 1;

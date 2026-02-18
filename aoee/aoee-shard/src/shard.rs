@@ -1,5 +1,6 @@
 //! Individual shard implementation
 
+use crate::cache::{LruCache, CacheStats as LruCacheStats};
 use crate::config::ShardConfig;
 use aoee_core::{
     compaction::CompactionConfig,
@@ -7,12 +8,11 @@ use aoee_core::{
     EdgeKey, EntityId,
 };
 use aoee_storage::{EdgeStore, StorageError};
-use dashmap::DashMap;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 use tokio::sync::RwLock;
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
 /// Shard errors
 #[derive(Error, Debug)]
@@ -31,8 +31,8 @@ pub type Result<T> = std::result::Result<T, ShardError>;
 pub struct Shard<S: EdgeStore> {
     config: ShardConfig,
     storage: Arc<S>,
-    /// Cached posting lists: EdgeKey -> PostingList
-    cache: DashMap<EdgeKey, SharedPostingList>,
+    /// LRU cache for posting lists
+    cache: LruCache,
     /// Stats
     stats: RwLock<ShardStats>,
 }
@@ -45,14 +45,17 @@ pub struct ShardStats {
     pub writes: u64,
     pub cache_hits: u64,
     pub cache_misses: u64,
+    pub cache_evictions: u64,
+    pub cache_memory_bytes: usize,
 }
 
 impl<S: EdgeStore> Shard<S> {
     pub fn new(config: ShardConfig, storage: Arc<S>) -> Self {
+        let cache = LruCache::new(config.cache_config());
         Shard {
             config,
             storage,
-            cache: DashMap::new(),
+            cache,
             stats: RwLock::new(ShardStats::default()),
         }
     }
@@ -83,7 +86,7 @@ impl<S: EdgeStore> Shard<S> {
         
         // Write-through to storage if enabled
         if self.config.write_through {
-            self.storage.persist_edge(key, dst, timestamp).await?;
+            self.storage.persist_edge_with_metadata(key, dst, timestamp, metadata).await?;
         }
         
         // Update cache
@@ -97,6 +100,9 @@ impl<S: EdgeStore> Shard<S> {
                 list.compact(&self.config.compaction);
             }
         }
+        
+        // Update size estimate after modification
+        self.cache.update_size(&key);
         
         // Update stats
         {
@@ -116,9 +122,8 @@ impl<S: EdgeStore> Shard<S> {
             self.storage.persist_delete(key, dst, timestamp).await?;
         }
         
-        // Update cache
-        let pl = self.get_or_create_list(key);
-        {
+        // Update cache if key exists
+        if let Some(pl) = self.cache.get(&key) {
             let mut list = pl.write();
             list.delete(dst, timestamp);
         }
@@ -140,20 +145,13 @@ impl<S: EdgeStore> Shard<S> {
             stats.reads += 1;
         }
         
-        // Check cache
+        // Check cache (LruCache.get() updates access time automatically)
         if let Some(pl) = self.cache.get(&key) {
-            let mut stats = self.stats.write().await;
-            stats.cache_hits += 1;
             let list = pl.read();
             return Ok(list.neighbors());
         }
         
         // Cache miss - load from storage
-        {
-            let mut stats = self.stats.write().await;
-            stats.cache_misses += 1;
-        }
-        
         let pl = self.load_from_storage(key).await?;
         let neighbors = {
             let list = pl.read();
@@ -173,18 +171,11 @@ impl<S: EdgeStore> Shard<S> {
         
         // Check cache
         if let Some(pl) = self.cache.get(&key) {
-            let mut stats = self.stats.write().await;
-            stats.cache_hits += 1;
             let list = pl.read();
             return Ok(list.neighbors_limited(limit));
         }
         
-        // Cache miss
-        {
-            let mut stats = self.stats.write().await;
-            stats.cache_misses += 1;
-        }
-        
+        // Cache miss - load from storage
         let pl = self.load_from_storage(key).await?;
         let neighbors = {
             let list = pl.read();
@@ -205,8 +196,6 @@ impl<S: EdgeStore> Shard<S> {
         
         // Check cache
         if let Some(pl) = self.cache.get(&key) {
-            let mut stats = self.stats.write().await;
-            stats.cache_hits += 1;
             let list = pl.read();
             return Ok(if limit > 0 {
                 list.neighbors_with_metadata_limited(limit)
@@ -215,12 +204,7 @@ impl<S: EdgeStore> Shard<S> {
             });
         }
         
-        // Cache miss
-        {
-            let mut stats = self.stats.write().await;
-            stats.cache_misses += 1;
-        }
-        
+        // Cache miss - load from storage
         let pl = self.load_from_storage(key).await?;
         let result = {
             let list = pl.read();
@@ -267,10 +251,7 @@ impl<S: EdgeStore> Shard<S> {
 
     /// Get or create a posting list in cache
     fn get_or_create_list(&self, key: EdgeKey) -> SharedPostingList {
-        self.cache
-            .entry(key)
-            .or_insert_with(new_shared_posting_list)
-            .clone()
+        self.cache.get_or_insert_with(key, new_shared_posting_list)
     }
 
     /// Load posting list from storage
@@ -282,17 +263,22 @@ impl<S: EdgeStore> Shard<S> {
             let mut list = pl.write();
             for edge in stored_edges {
                 if !edge.deleted {
-                    list.add(edge.dst, edge.timestamp);
+                    list.add_with_metadata(edge.dst, edge.timestamp, edge.metadata);
                 }
             }
-            // Compact after loading
-            if list.buffer_len() > 0 {
-                list.force_compact(&self.config.compaction);
-            }
+            // Note: We don't force compact here because segments don't preserve metadata.
+            // Regular compaction will happen when buffer exceeds threshold.
+            // For edge types with metadata (like LIKES), this keeps metadata accessible.
         }
         
-        // Add to cache
+        // Add to LRU cache
         self.cache.insert(key, pl.clone());
+        
+        // Update stats for cache miss
+        {
+            let mut stats = self.stats.write().await;
+            stats.cache_misses += 1;
+        }
         
         Ok(pl)
     }
@@ -317,8 +303,18 @@ impl<S: EdgeStore> Shard<S> {
     /// Get shard statistics
     pub async fn stats(&self) -> ShardStats {
         let mut stats = self.stats.read().await.clone();
-        stats.cached_lists = self.cache.len();
+        let cache_stats = self.cache.stats();
+        stats.cached_lists = cache_stats.entries;
+        stats.cache_hits = cache_stats.hits;
+        stats.cache_misses = cache_stats.misses;
+        stats.cache_evictions = cache_stats.evictions;
+        stats.cache_memory_bytes = cache_stats.memory_bytes;
         stats
+    }
+
+    /// Get detailed cache statistics
+    pub fn cache_stats(&self) -> LruCacheStats {
+        self.cache.stats()
     }
 
     /// Get shard ID
@@ -336,12 +332,54 @@ impl<S: EdgeStore> Shard<S> {
         self.cache.remove(&key);
     }
 
+    /// Check if a key is in the cache
+    pub fn cache_contains(&self, key: &EdgeKey) -> bool {
+        self.cache.contains(key)
+    }
+
+    /// Evict entries older than the given duration
+    pub fn evict_older_than(&self, max_age: Duration) {
+        self.cache.evict_older_than(max_age);
+    }
+
+    /// Evict to reach target memory usage
+    pub fn evict_to_memory(&self, target_bytes: usize) {
+        self.cache.evict_to_memory_limit(target_bytes);
+    }
+
+    /// Force LRU eviction
+    pub fn evict_lru(&self) {
+        self.cache.evict_lru();
+    }
+
     /// Force compaction on all cached lists
     pub async fn compact_all(&self) {
-        for entry in self.cache.iter() {
-            let mut list = entry.value().write();
-            list.compact(&self.config.compaction);
+        for key in self.cache.keys() {
+            if let Some(pl) = self.cache.get(&key) {
+                let mut list = pl.write();
+                list.compact(&self.config.compaction);
+            }
         }
+    }
+
+    /// Run periodic maintenance (TTL eviction, compaction)
+    pub async fn maintenance(&self) {
+        // TTL-based eviction if configured
+        if self.config.cache_ttl_seconds > 0 {
+            let ttl = Duration::from_secs(self.config.cache_ttl_seconds);
+            self.evict_older_than(ttl);
+        }
+        
+        // Compact if needed
+        if self.config.background_compaction {
+            self.compact_all().await;
+        }
+        
+        let stats = self.cache.stats();
+        debug!(
+            "Shard {} maintenance: {} entries, {} bytes, {} evictions",
+            self.config.shard_id, stats.entries, stats.memory_bytes, stats.evictions
+        );
     }
 }
 
@@ -451,13 +489,56 @@ mod tests {
         let key = make_key(1, EdgeType::Follows);
         
         shard.add_edge(key, make_id(2)).await.unwrap();
-        assert!(shard.cache.contains_key(&key));
+        assert!(shard.cache_contains(&key));
         
         shard.evict(key);
-        assert!(!shard.cache.contains_key(&key));
+        assert!(!shard.cache_contains(&key));
         
         // Should still be able to load from storage
         let neighbors = shard.neighbors(key).await.unwrap();
         assert_eq!(neighbors.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_lru_eviction() {
+        let store = Arc::new(InMemoryStore::new());
+        // Create config with small cache and allow eviction with few entries
+        let mut config = ShardConfig::default();
+        config.cache.max_entries = 3;
+        config.cache.min_entries = 0; // Allow eviction with few entries
+        config.cache.eviction_target_ratio = 0.66;
+        let shard = Shard::new(config, store);
+        
+        // Add 5 keys, exceeding the 3-entry limit
+        for i in 0..5 {
+            let key = make_key(i, EdgeType::Follows);
+            shard.add_edge(key, make_id(100 + i)).await.unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        
+        // Cache should have evicted some entries
+        let stats = shard.cache_stats();
+        assert!(stats.evictions > 0, "Expected evictions, got {}", stats.evictions);
+        assert!(stats.entries <= 3, "Expected at most 3 entries, got {}", stats.entries);
+    }
+
+    #[tokio::test]
+    async fn test_cache_stats() {
+        let store = Arc::new(InMemoryStore::new());
+        let shard = Shard::new(ShardConfig::default(), store);
+        
+        let key = make_key(1, EdgeType::Follows);
+        shard.add_edge(key, make_id(2)).await.unwrap();
+        
+        // Cache hit
+        let _ = shard.neighbors(key).await.unwrap();
+        
+        // Cache miss (new key not in cache)
+        let key2 = make_key(999, EdgeType::Follows);
+        let _ = shard.neighbors(key2).await.unwrap();
+        
+        let stats = shard.stats().await;
+        assert!(stats.cache_hits >= 1);
+        assert!(stats.cache_memory_bytes > 0);
     }
 }

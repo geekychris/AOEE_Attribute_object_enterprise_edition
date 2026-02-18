@@ -14,7 +14,7 @@ pub mod compaction;
 pub mod fof;
 
 // Re-exports for convenience
-pub use id::{EntityId, EntityType};
+pub use id::{EntityId, EntityType, IdGenerator, AOEE_EPOCH};
 pub use types::{EdgeKey, EdgeType, BufferEntry, WriteBuffer, Segment, PostingList};
 pub use encoding::{EncodedList, EncodingStrategy, PostingEncoder};
 pub use iterator::{PostingIterator, MergedIterator};

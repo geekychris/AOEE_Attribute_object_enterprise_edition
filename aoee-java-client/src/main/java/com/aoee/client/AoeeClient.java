@@ -92,6 +92,47 @@ public class AoeeClient implements AutoCloseable {
     }
 
     /**
+     * Batch add multiple edges in a single RPC call.
+     * Much more efficient than calling addEdge repeatedly.
+     *
+     * @param edges List of edges to add (max 10,000 per call)
+     * @return BatchAddResult with counts of added and failed edges
+     */
+    public BatchAddResult addEdges(List<EdgeData> edges) {
+        try {
+            AddEdgesRequest.Builder builder = AddEdgesRequest.newBuilder();
+            for (EdgeData e : edges) {
+                builder.addEdges(Edge.newBuilder()
+                        .setSrc(e.src())
+                        .setEdgeType(e.edgeType())
+                        .setDst(e.dst())
+                        .setTimestamp(e.timestamp())
+                        .setMetadata(e.metadata())
+                        .build());
+            }
+            AddEdgesResponse response = blockingStub.addEdges(builder.build());
+            return new BatchAddResult(response.getEdgesAdded(), response.getEdgesFailed(), response.getSuccess());
+        } catch (StatusRuntimeException e) {
+            logger.error("Failed to batch add {} edges", edges.size(), e);
+            throw new AoeeClientException("Failed to batch add edges", e);
+        }
+    }
+
+    /**
+     * Edge data for batch operations.
+     */
+    public record EdgeData(long src, int edgeType, long dst, long timestamp, int metadata) {
+        public EdgeData(long src, int edgeType, long dst) {
+            this(src, edgeType, dst, 0, 0);
+        }
+    }
+
+    /**
+     * Result of a batch add operation.
+     */
+    public record BatchAddResult(long edgesAdded, long edgesFailed, boolean success) {}
+
+    /**
      * Delete an edge from src to dst.
      */
     public boolean deleteEdge(long src, int edgeType, long dst) {
@@ -295,6 +336,14 @@ public class AoeeClient implements AutoCloseable {
     }
 
     /**
+     * Find friend-of-friend candidates with configuration (no exclusions).
+     */
+    public FofResult friendOfFriend(long source, int edgeType, int fanoutCap,
+                                     int maxResults, int minScore) {
+        return friendOfFriend(source, edgeType, fanoutCap, maxResults, minScore, List.of());
+    }
+
+    /**
      * Find friend-of-friend candidates with full configuration.
      *
      * @param source Source entity ID
@@ -329,6 +378,129 @@ public class AoeeClient implements AutoCloseable {
         } catch (StatusRuntimeException e) {
             logger.error("Failed to get FOF for {} (type {})", source, edgeType, e);
             throw new AoeeClientException("Failed to get friend-of-friend", e);
+        }
+    }
+
+    // ========================================================================
+    // ID Generation
+    // ========================================================================
+
+    /**
+     * Generate a single new ID of the specified type from the server.
+     * 
+     * Use this when you need centralized ID generation (e.g., for consistency
+     * across distributed services). For local ID generation without network
+     * calls, use {@link IdGenerator} instead.
+     * 
+     * @param entityType The type of entity to generate an ID for
+     * @return A new EntityId
+     */
+    public EntityId generateId(EntityType entityType) {
+        return generateIds(entityType, 1).get(0);
+    }
+
+    /**
+     * Generate a single new ID of the specified type code from the server.
+     */
+    public EntityId generateId(int entityTypeCode) {
+        return generateId(EntityType.fromCode(entityTypeCode));
+    }
+
+    /**
+     * Generate multiple new IDs of the specified type from the server.
+     * 
+     * @param entityType The type of entity to generate IDs for
+     * @param count Number of IDs to generate (1-10000)
+     * @return List of new EntityIds
+     */
+    public List<EntityId> generateIds(EntityType entityType, int count) {
+        try {
+            GenerateIdsRequest request = GenerateIdsRequest.newBuilder()
+                    .setEntityType(entityType.getCode())
+                    .setCount(count)
+                    .build();
+
+            GenerateIdsResponse response = blockingStub.generateIds(request);
+            
+            return response.getIdsList().stream()
+                    .map(EntityId::fromRaw)
+                    .toList();
+        } catch (StatusRuntimeException e) {
+            logger.error("Failed to generate {} IDs of type {}", count, entityType, e);
+            throw new AoeeClientException("Failed to generate IDs", e);
+        }
+    }
+
+    /**
+     * Generate multiple new IDs of the specified type code from the server.
+     */
+    public List<EntityId> generateIds(int entityTypeCode, int count) {
+        return generateIds(EntityType.fromCode(entityTypeCode), count);
+    }
+
+    // ========================================================================
+    // Entity Persistence
+    // ========================================================================
+
+    /**
+     * Entity data for batch operations.
+     */
+    public record EntityData(long id, String entityType, String name) {}
+
+    /**
+     * Result of a batch entity creation operation.
+     */
+    public record BatchCreateResult(long entitiesCreated, long entitiesFailed, boolean success) {}
+
+    /**
+     * Create a single entity (persisted via HTTP backend).
+     * 
+     * @param id Entity ID
+     * @param entityType Type of entity (e.g., "USER", "POST", "GROUP")
+     * @param name Entity name/label
+     * @return true if created successfully
+     */
+    public boolean createEntity(long id, String entityType, String name) {
+        try {
+            CreateEntityRequest request = CreateEntityRequest.newBuilder()
+                    .setId(id)
+                    .setEntityType(entityType)
+                    .setName(name)
+                    .build();
+
+            CreateEntityResponse response = blockingStub.createEntity(request);
+            return response.getSuccess();
+        } catch (StatusRuntimeException e) {
+            logger.error("Failed to create entity: {} (type {})", id, entityType, e);
+            throw new AoeeClientException("Failed to create entity", e);
+        }
+    }
+
+    /**
+     * Batch create multiple entities in a single RPC call.
+     * Much more efficient than calling createEntity repeatedly.
+     *
+     * @param entities List of entities to create (max 10,000 per call)
+     * @return BatchCreateResult with counts of created and failed entities
+     */
+    public BatchCreateResult createEntities(List<EntityData> entities) {
+        try {
+            CreateEntitiesRequest.Builder builder = CreateEntitiesRequest.newBuilder();
+            for (EntityData e : entities) {
+                builder.addEntities(Entity.newBuilder()
+                        .setId(e.id())
+                        .setEntityType(e.entityType())
+                        .setName(e.name())
+                        .build());
+            }
+            CreateEntitiesResponse response = blockingStub.createEntities(builder.build());
+            return new BatchCreateResult(
+                    response.getEntitiesCreated(),
+                    response.getEntitiesFailed(),
+                    response.getSuccess());
+        } catch (StatusRuntimeException e) {
+            logger.error("Failed to batch create {} entities", entities.size(), e);
+            throw new AoeeClientException("Failed to batch create entities", e);
         }
     }
 
@@ -376,6 +548,64 @@ public class AoeeClient implements AutoCloseable {
             throw new AoeeClientException("Failed to get stats", e);
         }
     }
+
+    // ========================================================================
+    // Cache Management
+    // ========================================================================
+
+    /**
+     * Flush the AOEE cache to storage.
+     * 
+     * @param clearAfterFlush If true, also clears the cache after flushing
+     * @return CacheResult with entries flushed count
+     */
+    public CacheResult flushCache(boolean clearAfterFlush) {
+        try {
+            FlushCacheRequest request = FlushCacheRequest.newBuilder()
+                    .setClearAfterFlush(clearAfterFlush)
+                    .build();
+
+            FlushCacheResponse response = blockingStub.flushCache(request);
+            return new CacheResult(response.getEntriesFlushed(), response.getSuccess(), "flush");
+        } catch (StatusRuntimeException e) {
+            logger.error("Failed to flush cache", e);
+            throw new AoeeClientException("Failed to flush cache", e);
+        }
+    }
+
+    /**
+     * Clear the AOEE cache (removes all entries from memory).
+     * 
+     * @return CacheResult with entries cleared count
+     */
+    public CacheResult clearCache() {
+        return clearCache(0);
+    }
+
+    /**
+     * Clear a specific shard's cache.
+     * 
+     * @param shardId The shard ID to clear (0 = all shards)
+     * @return CacheResult with entries cleared count
+     */
+    public CacheResult clearCache(int shardId) {
+        try {
+            ClearCacheRequest request = ClearCacheRequest.newBuilder()
+                    .setShardId(shardId)
+                    .build();
+
+            ClearCacheResponse response = blockingStub.clearCache(request);
+            return new CacheResult(response.getEntriesCleared(), response.getSuccess(), "clear");
+        } catch (StatusRuntimeException e) {
+            logger.error("Failed to clear cache", e);
+            throw new AoeeClientException("Failed to clear cache", e);
+        }
+    }
+
+    /**
+     * Result of a cache operation (flush or clear).
+     */
+    public record CacheResult(long entriesAffected, boolean success, String operation) {}
 
     // ========================================================================
     // Connection Management

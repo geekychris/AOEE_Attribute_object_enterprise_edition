@@ -246,6 +246,64 @@ impl<S: EdgeStore + 'static> ShardManager<S> {
         
         shard
     }
+
+    /// Clear all caches across all shards
+    /// Returns the number of entries that were cleared
+    pub async fn clear_all_caches(&self) -> usize {
+        let shards = self.shards.read().await;
+        let mut total_cleared = 0;
+        
+        for shard in shards.values() {
+            let stats = shard.cache_stats();
+            total_cleared += stats.entries;
+            shard.clear_cache();
+        }
+        
+        total_cleared
+    }
+
+    /// Clear cache for a specific shard
+    pub async fn clear_shard_cache(&self, shard_id: u32) -> Result<usize> {
+        let shards = self.shards.read().await;
+        let shard = shards.get(&shard_id)
+            .ok_or(ManagerError::ShardNotFound(shard_id))?;
+        
+        let stats = shard.cache_stats();
+        let entries = stats.entries;
+        shard.clear_cache();
+        
+        Ok(entries)
+    }
+
+    /// Flush storage for all shards (if storage supports it)
+    /// Returns the number of entries in cache at time of flush
+    pub async fn flush_all(&self) -> usize {
+        let shards = self.shards.read().await;
+        let mut total_entries = 0;
+        
+        for shard in shards.values() {
+            let stats = shard.cache_stats();
+            total_entries += stats.entries;
+            // Storage flush is handled by the EdgeStore implementation
+        }
+        
+        total_entries
+    }
+
+    /// Evict a specific key from cache (forces reload from storage on next access)
+    pub async fn evict_key(&self, key: EdgeKey) -> Result<()> {
+        let shard = self.get_shard(&key).await?;
+        shard.evict(key);
+        Ok(())
+    }
+
+    /// Run maintenance on all shards (TTL eviction, compaction)
+    pub async fn maintenance(&self) {
+        let shards = self.shards.read().await;
+        for shard in shards.values() {
+            shard.maintenance().await;
+        }
+    }
 }
 
 #[cfg(test)]

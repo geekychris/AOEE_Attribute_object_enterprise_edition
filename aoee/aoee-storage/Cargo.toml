@@ -6,6 +6,12 @@ authors.workspace = true
 license.workspace = true
 description = "Storage abstraction layer for AOEE"
 
+[features]
+default = []
+rocksdb-backend = ["rocksdb"]
+http-backend = ["reqwest"]
+all-backends = ["rocksdb-backend", "http-backend"]
+
 [dependencies]
 aoee-core.workspace = true
 thiserror.workspace = true
@@ -14,6 +20,13 @@ async-trait.workspace = true
 tokio.workspace = true
 parking_lot.workspace = true
 serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+tracing.workspace = true
+
+# Optional storage backends
+rocksdb = { workspace = true, optional = true }
+reqwest = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio-test.workspace = true
+tempfile.workspace = true

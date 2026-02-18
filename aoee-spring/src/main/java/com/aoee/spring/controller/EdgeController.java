@@ -8,6 +8,12 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/**
+ * Edge operations - proxies to AOEE Rust server.
+ * 
+ * Note: Persistence is handled by the AOEE server's write-through layer,
+ * not by this UI application.
+ */
 @RestController
 @RequestMapping("/api/edges")
 public class EdgeController {
@@ -37,7 +43,7 @@ public class EdgeController {
                 EdgeType.fromName(request.edgeType()),
                 request.dst()
         );
-        return ResponseEntity.ok(new EdgeResponse(success, "Edge deleted"));
+        return ResponseEntity.ok(new EdgeResponse(success, success ? "Edge deleted" : "Edge not found"));
     }
 
     @GetMapping("/{src}/{edgeType}")

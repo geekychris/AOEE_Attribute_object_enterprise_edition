@@ -4,10 +4,26 @@ server:
 aoee:
   host: localhost
   port: 50051
+  
+  # Persistence service URL (for benchmark entity creation)
+  persistence:
+    url: http://localhost:8081
 
 spring:
   application:
     name: aoee-spring
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+
+logging:
+  level:
+    com.aoee.spring: INFO
+    com.aoee.spring.persistence: DEBUG
 
 management:
   endpoints:

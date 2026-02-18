@@ -29,7 +29,13 @@ impl Default for NoopStore {
 
 #[async_trait]
 impl EdgeStore for NoopStore {
-    async fn persist_edge(&self, _key: EdgeKey, _dst: EntityId, _timestamp: u64) -> Result<()> {
+    async fn persist_edge_with_metadata(
+        &self,
+        _key: EdgeKey,
+        _dst: EntityId,
+        _timestamp: u64,
+        _metadata: u8,
+    ) -> Result<()> {
         Ok(())
     }
 
