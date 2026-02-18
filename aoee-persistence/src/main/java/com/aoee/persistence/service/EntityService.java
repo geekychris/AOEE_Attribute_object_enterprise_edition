@@ -8,6 +8,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -40,6 +41,24 @@ public class EntityService {
         }
         return createEntity(id, entityType, name);
     }
+
+    /**
+     * Batch create entities efficiently.
+     * @return number of entities created
+     */
+    public int createEntitiesBatch(List<EntityBatchItem> entities) {
+        List<EntityModel> toSave = new ArrayList<>();
+        for (EntityBatchItem item : entities) {
+            toSave.add(new EntityModel(item.id(), item.entityType(), item.name()));
+        }
+        entityRepository.saveAll(toSave);
+        return toSave.size();
+    }
+
+    /**
+     * DTO for batch entity creation.
+     */
+    public record EntityBatchItem(Long id, String entityType, String name) {}
 
     @Transactional(readOnly = true)
     public Optional<EntityModel> getEntity(Long id) {

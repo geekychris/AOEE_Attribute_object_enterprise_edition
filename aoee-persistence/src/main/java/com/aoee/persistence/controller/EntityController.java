@@ -41,6 +41,22 @@ public class EntityController {
         return ResponseEntity.ok(EntityResponse.from(entity));
     }
 
+    /**
+     * Batch create entities - much more efficient for bulk operations.
+     */
+    @PostMapping("/batch")
+    public ResponseEntity<Map<String, Object>> createEntitiesBatch(@RequestBody List<CreateEntityRequest> requests) {
+        List<EntityService.EntityBatchItem> items = requests.stream()
+            .map(r -> new EntityService.EntityBatchItem(r.id(), r.entityType(), r.name()))
+            .toList();
+        
+        int count = entityService.createEntitiesBatch(items);
+        return ResponseEntity.ok(Map.of(
+            "success", true,
+            "entitiesCreated", count
+        ));
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<EntityResponse> getEntity(@PathVariable Long id) {
         return entityService.getEntity(id)

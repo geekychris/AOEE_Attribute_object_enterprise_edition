@@ -2,7 +2,6 @@ package com.aoee.spring.benchmark;
 
 import com.aoee.client.AoeeClient;
 import com.aoee.client.EdgeType;
-import com.aoee.client.ReactionType;
 import com.aoee.spring.benchmark.BenchmarkResult.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,6 +34,12 @@ public class BenchmarkService {
     private static final long USER_ID_BASE = 1;
     private static final long POST_ID_BASE = 1_000_000;
     private static final long GROUP_ID_BASE = 2_000_000;
+    
+    // Batch size for edge insertion
+    private static final int BATCH_SIZE = 10_000;
+    
+    // Batch size for entity persistence
+    private static final int ENTITY_BATCH_SIZE = 5_000;
     
     public BenchmarkService(AoeeClient client) {
         this.client = client;
@@ -111,6 +116,10 @@ public class BenchmarkService {
             groupIds.add(GROUP_ID_BASE + i);
         }
         
+        // Persist entities to database
+        log.info("Persisting entities to database...");
+        persistEntities();
+        
         long followEdges = 0;
         long friendEdges = 0;
         long likeEdges = 0;
@@ -156,6 +165,7 @@ public class BenchmarkService {
     private long generateFollowEdges(BenchmarkConfig config, Random random) {
         long count = 0;
         Set<Long> popularSet = new HashSet<>(popularUserIds);
+        List<AoeeClient.EdgeData> batch = new ArrayList<>(BATCH_SIZE);
         
         for (Long userId : userIds) {
             // Determine how many users this user follows
@@ -186,15 +196,22 @@ public class BenchmarkService {
             for (int i = 0; i < numFollows && !candidates.isEmpty(); i++) {
                 Long target = candidates.get(random.nextInt(candidates.size()));
                 if (followed.add(target)) {
-                    client.addEdge(userId, EdgeType.FOLLOWS, target);
+                    batch.add(new AoeeClient.EdgeData(userId, EdgeType.FOLLOWS, target));
                     userFollowerCounts.merge(target, 1, Integer::sum);
                     count++;
+                    
+                    if (batch.size() >= BATCH_SIZE) {
+                        client.addEdges(batch);
+                        batch.clear();
+                        log.debug("Generated {} follow edges...", count);
+                    }
                 }
             }
-            
-            if (count % 10000 == 0) {
-                log.debug("Generated {} follow edges...", count);
-            }
+        }
+        
+        // Flush remaining
+        if (!batch.isEmpty()) {
+            client.addEdges(batch);
         }
         
         return count;
@@ -203,6 +220,7 @@ public class BenchmarkService {
     private long generateFriendEdges(BenchmarkConfig config, Random random) {
         long count = 0;
         Set<String> existingFriendships = new HashSet<>();
+        List<AoeeClient.EdgeData> batch = new ArrayList<>(BATCH_SIZE);
         
         for (Long userId : userIds) {
             int numFriends = sampleCount(config.avgFriendsPerUser() / 2, config.avgFriendsPerUser(), random);
@@ -213,12 +231,22 @@ public class BenchmarkService {
                     String key = Math.min(userId, friendId) + "-" + Math.max(userId, friendId);
                     if (existingFriendships.add(key)) {
                         // Add bidirectional friendship
-                        client.addEdge(userId, EdgeType.FRIEND_OF, friendId);
-                        client.addEdge(friendId, EdgeType.FRIEND_OF, userId);
+                        batch.add(new AoeeClient.EdgeData(userId, EdgeType.FRIEND_OF, friendId));
+                        batch.add(new AoeeClient.EdgeData(friendId, EdgeType.FRIEND_OF, userId));
                         count += 2;
+                        
+                        if (batch.size() >= BATCH_SIZE) {
+                            client.addEdges(batch);
+                            batch.clear();
+                        }
                     }
                 }
             }
+        }
+        
+        // Flush remaining
+        if (!batch.isEmpty()) {
+            client.addEdges(batch);
         }
         
         return count;
@@ -228,6 +256,7 @@ public class BenchmarkService {
         long count = 0;
         Set<Long> viralSet = new HashSet<>(viralPostIds);
         int[] reactions = {0, 1, 2, 3, 4, 5}; // like, love, haha, wow, sad, angry
+        List<AoeeClient.EdgeData> batch = new ArrayList<>(BATCH_SIZE);
         
         for (Long postId : postIds) {
             // Viral posts get more likes
@@ -245,16 +274,23 @@ public class BenchmarkService {
                 Long likerId = userIds.get(random.nextInt(userIds.size()));
                 if (likers.add(likerId)) {
                     int reaction = reactions[random.nextInt(reactions.length)];
-                    client.addEdge(likerId, EdgeType.LIKES, postId, 0, reaction);
+                    batch.add(new AoeeClient.EdgeData(likerId, EdgeType.LIKES, postId, 0, reaction));
                     count++;
+                    
+                    if (batch.size() >= BATCH_SIZE) {
+                        client.addEdges(batch);
+                        batch.clear();
+                        log.debug("Generated {} like edges...", count);
+                    }
                 }
             }
             
             postLikeCounts.put(postId, likers.size());
-            
-            if (count % 10000 == 0) {
-                log.debug("Generated {} like edges...", count);
-            }
+        }
+        
+        // Flush remaining
+        if (!batch.isEmpty()) {
+            client.addEdges(batch);
         }
         
         return count;
@@ -262,6 +298,7 @@ public class BenchmarkService {
     
     private long generateMemberEdges(BenchmarkConfig config, Random random) {
         long count = 0;
+        List<AoeeClient.EdgeData> batch = new ArrayList<>(BATCH_SIZE);
         
         for (Long groupId : groupIds) {
             int numMembers = sampleCount(config.avgMembersPerGroup(), config.avgMembersPerGroup() * 2, random);
@@ -271,13 +308,77 @@ public class BenchmarkService {
             for (int i = 0; i < numMembers; i++) {
                 Long memberId = userIds.get(random.nextInt(userIds.size()));
                 if (members.add(memberId)) {
-                    client.addEdge(memberId, EdgeType.MEMBER_OF, groupId);
+                    batch.add(new AoeeClient.EdgeData(memberId, EdgeType.MEMBER_OF, groupId));
                     count++;
+                    
+                    if (batch.size() >= BATCH_SIZE) {
+                        client.addEdges(batch);
+                        batch.clear();
+                    }
                 }
             }
         }
         
+        // Flush remaining
+        if (!batch.isEmpty()) {
+            client.addEdges(batch);
+        }
+        
         return count;
+    }
+    
+    /**
+     * Persist generated entities to the database via Rust server write-through.
+     */
+    private void persistEntities() {
+        try {
+            // Persist users in batches via Rust server
+            long userCount = persistEntitiesBatch(userIds, "USER", "User");
+            log.info("Persisted {} user entities", userCount);
+            
+            // Persist posts in batches via Rust server
+            long postCount = persistEntitiesBatch(postIds, "POST", "Post");
+            log.info("Persisted {} post entities", postCount);
+            
+            // Persist groups in batches via Rust server
+            long groupCount = persistEntitiesBatch(groupIds, "GROUP", "Group");
+            log.info("Persisted {} group entities", groupCount);
+        } catch (Exception e) {
+            log.warn("Failed to persist entities to database: {}", e.getMessage());
+            log.warn("Exception class: {}", e.getClass().getName());
+            if (e.getCause() != null) {
+                log.warn("Cause: {}", e.getCause().getMessage());
+            }
+        }
+    }
+    
+    private long persistEntitiesBatch(List<Long> ids, String entityType, String namePrefix) {
+        long total = 0;
+        List<AoeeClient.EntityData> batch = new ArrayList<>(ENTITY_BATCH_SIZE);
+        
+        for (Long id : ids) {
+            batch.add(new AoeeClient.EntityData(id, entityType, namePrefix + " " + id));
+            
+            if (batch.size() >= ENTITY_BATCH_SIZE) {
+                var result = client.createEntities(batch);
+                total += result.entitiesCreated();
+                if (result.entitiesFailed() > 0) {
+                    log.warn("{} entities failed to persist", result.entitiesFailed());
+                }
+                batch.clear();
+            }
+        }
+        
+        // Flush remaining
+        if (!batch.isEmpty()) {
+            var result = client.createEntities(batch);
+            total += result.entitiesCreated();
+            if (result.entitiesFailed() > 0) {
+                log.warn("{} entities failed to persist", result.entitiesFailed());
+            }
+        }
+        
+        return total;
     }
     
     /**

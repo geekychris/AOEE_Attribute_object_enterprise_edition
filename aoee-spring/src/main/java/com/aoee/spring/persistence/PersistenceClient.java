@@ -23,8 +23,18 @@ public class PersistenceClient {
     
     public PersistenceClient(PersistenceConfig config) {
         this.config = config;
+        
+        // Use SimpleClientHttpRequestFactory to force HTTP/1.1
+        var requestFactory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(java.time.Duration.ofSeconds(30));
+        requestFactory.setReadTimeout(java.time.Duration.ofSeconds(120));
+        
+        String baseUrl = config.getUrl();
+        logger.info("PersistenceClient initialized with URL: {}", baseUrl);
+        
         this.restClient = RestClient.builder()
-            .baseUrl(config.getUrl())
+            .baseUrl(baseUrl)
+            .requestFactory(requestFactory)
             .build();
     }
     
@@ -150,5 +160,23 @@ public class PersistenceClient {
     
     public boolean isWriteThrough() {
         return config.isWriteThrough();
+    }
+    
+    /**
+     * Batch create entities in the persistence layer.
+     */
+    public int createEntitiesBatch(java.util.List<java.util.Map<String, Object>> entities) {
+        try {
+            var response = restClient.post()
+                .uri("/api/v1/entities/batch")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(entities)
+                .retrieve()
+                .body(java.util.Map.class);
+            return response != null ? (Integer) response.getOrDefault("entitiesCreated", 0) : 0;
+        } catch (RestClientException e) {
+            logger.warn("Failed to batch create entities: {}", e.getMessage());
+            return 0;
+        }
     }
 }

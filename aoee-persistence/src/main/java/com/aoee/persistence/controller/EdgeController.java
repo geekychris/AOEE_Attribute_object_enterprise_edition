@@ -43,6 +43,23 @@ public class EdgeController {
         return ResponseEntity.ok(EdgeResponse.from(edge));
     }
 
+    /**
+     * Batch create edges - much more efficient for bulk operations.
+     */
+    @PostMapping("/batch")
+    public ResponseEntity<Map<String, Object>> createEdgesBatch(@RequestBody List<CreateEdgeRequest> requests) {
+        List<EdgeService.EdgeBatchItem> items = requests.stream()
+            .map(r -> new EdgeService.EdgeBatchItem(
+                r.src(), r.edgeType(), r.dst(), r.timestampNs(), r.metadata()))
+            .toList();
+        
+        int count = edgeService.createEdgesBatch(items);
+        return ResponseEntity.ok(Map.of(
+            "success", true,
+            "edgesCreated", count
+        ));
+    }
+
     @GetMapping("/{src}/{edgeType}/{dst}")
     public ResponseEntity<EdgeResponse> getEdge(
             @PathVariable Long src,

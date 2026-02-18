@@ -407,6 +407,94 @@ impl EdgeStore for HttpStore {
     }
 }
 
+// Entity persistence methods (not part of EdgeStore trait)
+impl HttpStore {
+    /// Create a single entity in the persistence layer
+    pub async fn create_entity(&self, id: u64, entity_type: &str, name: &str) -> Result<()> {
+        let url = format!("{}/api/v1/entities", self.base_url);
+        
+        let request = serde_json::json!({
+            "id": id as i64,
+            "entityType": entity_type,
+            "name": name
+        });
+
+        debug!("HTTP create_entity: {} ({}) - {}", id, entity_type, name);
+
+        match self.client.post(&url)
+            .json(&request)
+            .send()
+            .await
+        {
+            Ok(response) => {
+                if response.status().is_success() {
+                    Ok(())
+                } else {
+                    let status = response.status();
+                    let text = response.text().await.unwrap_or_default();
+                    warn!("HTTP create_entity failed: {} - {}", status, text);
+                    Err(StorageError::Internal(format!("HTTP error: {} - {}", status, text)))
+                }
+            }
+            Err(e) => {
+                error!("HTTP create_entity connection error: {}", e);
+                Err(StorageError::Connection(format!("HTTP request failed: {}", e)))
+            }
+        }
+    }
+
+    /// Batch create entities in the persistence layer
+    pub async fn create_entities_batch(&self, entities: &[(u64, String, String)]) -> Result<(u64, u64)> {
+        let url = format!("{}/api/v1/entities/batch", self.base_url);
+        
+        let request: Vec<serde_json::Value> = entities.iter()
+            .map(|(id, entity_type, name)| {
+                serde_json::json!({
+                    "id": *id as i64,
+                    "entityType": entity_type,
+                    "name": name
+                })
+            })
+            .collect();
+
+        debug!("HTTP create_entities_batch: {} entities", entities.len());
+
+        match self.client.post(&url)
+            .json(&request)
+            .send()
+            .await
+        {
+            Ok(response) => {
+                if response.status().is_success() {
+                    #[derive(Debug, serde::Deserialize)]
+                    #[serde(rename_all = "camelCase")]
+                    struct BatchResponse {
+                        entities_created: Option<i64>,
+                        success: Option<bool>,
+                    }
+                    
+                    if let Ok(resp) = response.json::<BatchResponse>().await {
+                        let created = resp.entities_created.unwrap_or(0) as u64;
+                        let failed = entities.len() as u64 - created;
+                        Ok((created, failed))
+                    } else {
+                        Ok((entities.len() as u64, 0))
+                    }
+                } else {
+                    let status = response.status();
+                    let text = response.text().await.unwrap_or_default();
+                    warn!("HTTP create_entities_batch failed: {} - {}", status, text);
+                    Err(StorageError::Internal(format!("HTTP error: {} - {}", status, text)))
+                }
+            }
+            Err(e) => {
+                error!("HTTP create_entities_batch connection error: {}", e);
+                Err(StorageError::Connection(format!("HTTP request failed: {}", e)))
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     // HTTP tests require a running server, so we skip them in unit tests

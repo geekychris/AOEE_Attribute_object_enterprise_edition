@@ -93,18 +93,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let url = config.storage.http_url.clone();
             info!("Using HTTP storage at: {}", url);
             
+            // Create HTTP store for entity persistence
+            let http_store = Arc::new(HttpStore::new(&url));
+            
             // Check if service is available
-            let test_store = HttpStore::new(&url);
-            if !test_store.health_check().await {
+            if !http_store.health_check().await {
                 warn!("HTTP persistence service at {} is not responding - continuing anyway", url);
             } else {
                 info!("HTTP persistence service is healthy");
             }
             
+            let url_clone = url.clone();
             let service = AoeeService::new(manager_config, move |_shard_id| {
                 // All shards share the same HTTP backend
-                Arc::new(HttpStore::new(&url))
-            }).await;
+                Arc::new(HttpStore::new(&url_clone))
+            }).await
+            .with_http_store(http_store);
             
             let reflection_service = ReflectionBuilder::configure()
                 .register_encoded_file_descriptor_set(FILE_DESCRIPTOR_SET)

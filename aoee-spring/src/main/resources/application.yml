@@ -5,16 +5,20 @@ aoee:
   host: localhost
   port: 50051
   
-  # Persistence configuration
+  # Persistence service URL (for benchmark entity creation)
   persistence:
-    enabled: false  # Set to true to enable write-through to persistence
     url: http://localhost:8081
-    write-through: true  # Write edges to persistence on add/delete
-    warm-on-startup: false  # Load edges from persistence on startup
 
 spring:
   application:
     name: aoee-spring
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
 
 logging:
   level:

@@ -40,6 +40,13 @@ spring:
       printer:
         enabled: true
 
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+
 logging:
   level:
     com.aoee.persistence: DEBUG

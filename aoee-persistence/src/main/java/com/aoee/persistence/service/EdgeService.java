@@ -7,6 +7,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -40,6 +41,35 @@ public class EdgeService {
         EdgeModel edge = new EdgeModel(srcId, edgeType, dstId, timestampNs, meta);
         return edgeRepository.save(edge);
     }
+
+    /**
+     * Batch create/update edges efficiently.
+     * @return number of edges created/updated
+     */
+    public int createEdgesBatch(List<EdgeBatchItem> edges) {
+        List<EdgeModel> toSave = new ArrayList<>();
+        
+        for (EdgeBatchItem item : edges) {
+            Short meta = item.metadata() != null ? item.metadata().shortValue() : 0;
+            EdgeModel edge = new EdgeModel(
+                item.srcId(), 
+                item.edgeType().toUpperCase(), 
+                item.dstId(), 
+                item.timestampNs(), 
+                meta
+            );
+            toSave.add(edge);
+        }
+        
+        // Use saveAll for batch insert (more efficient than individual saves)
+        edgeRepository.saveAll(toSave);
+        return toSave.size();
+    }
+
+    /**
+     * DTO for batch edge creation.
+     */
+    public record EdgeBatchItem(Long srcId, String edgeType, Long dstId, Long timestampNs, Integer metadata) {}
 
     @Transactional(readOnly = true)
     public Optional<EdgeModel> getEdge(Long srcId, String edgeType, Long dstId) {
