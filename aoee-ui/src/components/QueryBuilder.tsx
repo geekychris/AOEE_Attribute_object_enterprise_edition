@@ -32,6 +32,7 @@ export default function QueryBuilder() {
     setLoading(true);
     setError(null);
     setFofResult(null);
+    setSetResult(null);  // Clear set operation results when running FOF
 
     try {
       const result = await friendOfFriend(
@@ -54,6 +55,7 @@ export default function QueryBuilder() {
     setLoading(true);
     setError(null);
     setSetResult(null);
+    setFofResult(null);  // Clear FOF results when running set operations
 
     try {
       const fn = op === 'intersect' ? intersect : union;
@@ -75,6 +77,7 @@ export default function QueryBuilder() {
     setLoading(true);
     setError(null);
     setSetResult(null);
+    setFofResult(null);  // Clear FOF results when running mutual friends
 
     try {
       const result = await mutualFriends(parseInt(user1), parseInt(user2));

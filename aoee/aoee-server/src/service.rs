@@ -324,12 +324,13 @@ impl<S: EdgeStore + 'static> Aoee for AoeeService<S> {
             .map_err(|e| Status::internal(e.to_string()))?;
 
         // Configure FOF query
+        let fanout_cap = if req.fanout_cap > 0 {
+            req.fanout_cap as usize
+        } else {
+            1000
+        };
         let config = FofConfig {
-            fanout_cap: if req.fanout_cap > 0 {
-                req.fanout_cap as usize
-            } else {
-                1000
-            },
+            fanout_cap,
             max_results: if req.max_results > 0 {
                 req.max_results as usize
             } else {
@@ -345,17 +346,32 @@ impl<S: EdgeStore + 'static> Aoee for AoeeService<S> {
 
         let exclusions: Vec<EntityId> = req.exclusions.iter().map(|&id| EntityId::from_raw(id)).collect();
 
-        // Execute FOF query
+        // Pre-fetch second-hop neighbors for all direct friends
+        // (FofQuery::execute expects a sync closure, so we fetch async first)
+        let friends_to_process: Vec<EntityId> = direct_friends
+            .iter()
+            .take(fanout_cap)
+            .copied()
+            .collect();
+        
+        let mut friend_neighbors: HashMap<EntityId, Vec<EntityId>> = HashMap::new();
+        for &friend_id in &friends_to_process {
+            let friend_key = EdgeKey::new(friend_id, edge_type);
+            let neighbors = self
+                .manager
+                .neighbors(friend_key)
+                .await
+                .unwrap_or_default();
+            friend_neighbors.insert(friend_id, neighbors);
+        }
+
+        // Execute FOF query with pre-fetched data
         let query = FofQuery::new(config);
-        let manager = self.manager.clone();
         let result = query.execute(
             source,
             &direct_friends,
             |id| {
-                // Synchronous wrapper - in production would need async support
-                let key = EdgeKey::new(id, edge_type);
-                // This is simplified - in production we'd use async properly
-                Vec::new() // Placeholder
+                friend_neighbors.get(&id).cloned().unwrap_or_default()
             },
             &exclusions,
         );

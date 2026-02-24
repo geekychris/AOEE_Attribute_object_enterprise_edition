@@ -159,7 +159,7 @@ pub struct DeltaVarintEncoder;
 
 impl DeltaVarintEncoder {
     /// Encode a u64 as a variable-length integer (LEB128-style)
-    fn encode_varint(value: u64, out: &mut Vec<u8>) {
+    pub(crate) fn encode_varint(value: u64, out: &mut Vec<u8>) {
         let mut v = value;
         loop {
             let mut byte = (v & 0x7F) as u8;
@@ -175,7 +175,7 @@ impl DeltaVarintEncoder {
     }
 
     /// Decode a variable-length integer
-    fn decode_varint(data: &[u8], pos: &mut usize) -> Result<u64, EncodingError> {
+    pub(crate) fn decode_varint(data: &[u8], pos: &mut usize) -> Result<u64, EncodingError> {
         let mut result: u64 = 0;
         let mut shift = 0;
         
@@ -282,7 +282,7 @@ pub struct BlockPackedEncoder;
 
 impl BlockPackedEncoder {
     /// Calculate bits needed to represent a value
-    fn bits_needed(value: u64) -> u8 {
+    pub(crate) fn bits_needed(value: u64) -> u8 {
         if value == 0 {
             return 1;
         }
@@ -316,7 +316,7 @@ impl BlockPackedEncoder {
     }
 
     /// Unpack a block with given bit width
-    fn unpack_block(data: &[u8], bit_width: u8, count: usize, out: &mut Vec<u64>) -> Result<usize, EncodingError> {
+    pub(crate) fn unpack_block(data: &[u8], bit_width: u8, count: usize, out: &mut Vec<u64>) -> Result<usize, EncodingError> {
         if bit_width == 0 {
             out.extend(std::iter::repeat(0).take(count));
             return Ok(0);

@@ -4,12 +4,13 @@
 //! including reads, writes, and iteration.
 
 use crate::compaction::{CompactionConfig, Compactor, CompactionStats};
-use crate::encoding::{AutoEncoder, PostingEncoder};
+use crate::encoding::{
+    BlockPackedEncoder, DeltaVarintEncoder, EncodedList, RoaringEncoder,
+};
 use crate::id::EntityId;
-use crate::iterator::{posting_list_iterator, VecIterator, PostingIterator};
+use crate::iterator::{posting_list_iterator, VecIterator};
 use crate::set_ops;
-use crate::types::{BufferEntry, PostingList, Segment, WriteBuffer};
-use std::sync::Arc;
+use crate::types::{BufferEntry, PostingList, WriteBuffer};
 
 /// Operations on a posting list
 impl PostingList {
@@ -76,7 +77,8 @@ impl PostingList {
         all.into_iter().take(limit).collect()
     }
 
-    /// Check if a destination ID exists in this posting list
+    /// Check if a destination ID exists in this posting list.
+    /// Avoids full segment decode by dispatching to encoding-specific contains.
     pub fn contains(&self, dst: EntityId) -> bool {
         // Check buffer first (most recent)
         let snapshot = self.buffer.snapshot();
@@ -86,11 +88,25 @@ impl PostingList {
             }
         }
         
-        // Check segments
+        // Check segments without full decode
         for segment in &self.segments {
             if segment.might_contain(dst) {
-                let ids = AutoEncoder::decode(&segment.data).unwrap_or_default();
-                if ids.binary_search(&dst).is_ok() {
+                let found = match &segment.data {
+                    EncodedList::SmallVec(ids) => ids.binary_search(&dst).is_ok(),
+                    EncodedList::DeltaVarint(data) => {
+                        // Walk the skip table to narrow the search range,
+                        // then decode forward from the nearest skip point.
+                        segment_contains_delta_varint(data, &segment.skip_table, dst)
+                    }
+                    EncodedList::BlockPacked(data) => {
+                        // Decode blocks forward until we find or pass dst.
+                        segment_contains_block_packed(data, dst)
+                    }
+                    EncodedList::Roaring(bitmap) => {
+                        RoaringEncoder::contains(bitmap, dst)
+                    }
+                };
+                if found {
                     return true;
                 }
             }
@@ -200,6 +216,166 @@ pub fn intersect_with_ids(pl: &PostingList, ids: &[EntityId]) -> Vec<EntityId> {
     let iter_a = posting_list_iterator(&pl.segments, &pl.buffer);
     let iter_b = VecIterator::new(ids.to_vec());
     set_ops::intersect(iter_a, iter_b)
+}
+
+/// Check if a delta-varint encoded segment contains `target` without full decode.
+/// Uses the skip table to jump ahead, then decodes forward until found or passed.
+fn segment_contains_delta_varint(
+    data: &[u8],
+    skip_table: &[(EntityId, u32)],
+    target: EntityId,
+) -> bool {
+    if data.is_empty() {
+        return false;
+    }
+
+    let mut pos = 0;
+    let count = match DeltaVarintEncoder::decode_varint(data, &mut pos) {
+        Ok(c) => c as usize,
+        Err(_) => return false,
+    };
+    if count == 0 {
+        return false;
+    }
+
+    let first = match DeltaVarintEncoder::decode_varint(data, &mut pos) {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+
+    // Use skip table: find the last entry with id <= target
+    let mut start_offset: usize = 0;
+    let mut start_prev = first;
+    let mut start_pos = pos; // byte pos right after first value
+
+    if !skip_table.is_empty() {
+        let skip_idx = skip_table.partition_point(|&(id, _)| id <= target);
+        if skip_idx > 0 {
+            let &(_skip_id, skip_off) = &skip_table[skip_idx - 1];
+            // We need to re-decode from the beginning to reach skip_off's byte position,
+            // but we can skip the comparison for entries before skip_off.
+            // For now, decode forward from start to skip_off.
+            let mut p = pos;
+            let mut prev = first;
+            for _ in 1..=(skip_off as usize) {
+                if let Ok(delta) = DeltaVarintEncoder::decode_varint(data, &mut p) {
+                    prev = prev.saturating_add(delta);
+                } else {
+                    return false;
+                }
+            }
+            start_offset = skip_off as usize;
+            start_prev = prev;
+            start_pos = p;
+        }
+    }
+
+    // Check if we're already at the first value and it matches
+    if start_offset == 0 {
+        if EntityId::from_raw(first) == target {
+            return true;
+        }
+        if EntityId::from_raw(first) > target {
+            return false;
+        }
+        start_offset = 1; // first value already checked
+        // start_prev and start_pos are already after first value
+    } else {
+        // Check the value at start_offset
+        if EntityId::from_raw(start_prev) == target {
+            return true;
+        }
+        if EntityId::from_raw(start_prev) > target {
+            return false;
+        }
+    }
+
+    // Decode forward from start_offset
+    let mut prev = start_prev;
+    let mut p = start_pos;
+    for _ in start_offset..count {
+        match DeltaVarintEncoder::decode_varint(data, &mut p) {
+            Ok(delta) => {
+                prev = prev.saturating_add(delta);
+                let id = EntityId::from_raw(prev);
+                if id == target {
+                    return true;
+                }
+                if id > target {
+                    return false; // sorted, won't find it
+                }
+            }
+            Err(_) => return false,
+        }
+    }
+
+    false
+}
+
+/// Check if a block-packed encoded segment contains `target` without full decode.
+/// Decodes one block at a time and stops as soon as we pass the target.
+fn segment_contains_block_packed(data: &[u8], target: EntityId) -> bool {
+    if data.len() < 12 {
+        return false;
+    }
+
+    let count = u32::from_le_bytes([data[0], data[1], data[2], data[3]]) as usize;
+    let first_value = u64::from_le_bytes([
+        data[4], data[5], data[6], data[7],
+        data[8], data[9], data[10], data[11],
+    ]);
+
+    if count == 0 {
+        return false;
+    }
+
+    let mut byte_pos = 12usize;
+    let mut emitted = 0usize;
+    let mut running_prev = first_value;
+
+    while emitted < count {
+        if byte_pos + 2 > data.len() {
+            return false;
+        }
+
+        let block_count = data[byte_pos] as usize;
+        let bit_width = data[byte_pos + 1];
+        byte_pos += 2;
+
+        let mut deltas: Vec<u64> = Vec::with_capacity(block_count);
+        let bytes_read = match BlockPackedEncoder::unpack_block(
+            &data[byte_pos..], bit_width, block_count, &mut deltas,
+        ) {
+            Ok(n) => n,
+            Err(_) => return false,
+        };
+        byte_pos += bytes_read;
+
+        // Convert deltas to absolute values and check
+        let mut prev = running_prev;
+        for (i, &delta) in deltas.iter().enumerate() {
+            let val = if emitted + i == 0 {
+                first_value
+            } else {
+                prev = prev.saturating_add(delta);
+                prev
+            };
+            let id = EntityId::from_raw(val);
+            if id == target {
+                return true;
+            }
+            if id > target {
+                return false; // sorted
+            }
+        }
+
+        // Update state for next block
+        // running_prev is already updated via `prev` above
+        running_prev = prev;
+        emitted += block_count;
+    }
+
+    false
 }
 
 #[cfg(test)]
