@@ -2,7 +2,12 @@
 # Multi-stage maven build then a slim JRE runtime. Build context is the AOEE repo root.
 FROM maven:3.9-eclipse-temurin-21 AS builder
 WORKDIR /src
+# aoee-spring depends on com.aoee:aoee-java-client:jar:0.1.0 (sibling module). Build the client
+# first so it lands in the in-image local Maven repo, then build the proxy.
+COPY aoee-java-client /src/aoee-java-client
 COPY aoee-spring /src/aoee-spring
+WORKDIR /src/aoee-java-client
+RUN mvn -DskipTests -B install
 WORKDIR /src/aoee-spring
 RUN mvn -DskipTests -B package
 
