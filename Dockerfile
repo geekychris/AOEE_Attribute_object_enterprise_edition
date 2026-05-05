@@ -2,9 +2,10 @@
 # Multi-stage: cargo build --release inside a rust:1-bookworm builder, then copy the static-ish
 # binary into a slim debian. Build context is the AOEE repo root.
 FROM rust:1.87-bookworm AS builder
-# zstd-sys (transitive dep) uses bindgen which needs libclang to parse C headers.
+# zstd-sys (transitive dep) uses bindgen which needs libclang. prost-build needs protoc to
+# compile the .proto files in aoee-server.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends libclang-dev clang \
+ && apt-get install -y --no-install-recommends libclang-dev clang protobuf-compiler \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
 # Copy only the Rust workspace; aoee-spring (Java) and other dirs are not needed here.
