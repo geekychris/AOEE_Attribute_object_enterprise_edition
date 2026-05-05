@@ -1,0 +1,31 @@
+apiVersion: devportal.io/v1
+kind: Asset
+metadata:
+  id: aoee
+  name: AOEE
+  description: |
+    Attribute Object Enterprise Edition — high-performance Rust graph querying engine
+    with TAO-inspired in-memory relationship caching. Cargo workspace lives under aoee/.
+    Consumed by enterprise-social-platform via the AOEE Java client / Spring proxy.
+  owner: geekychris
+  tags: [rust, graph-cache, social]
+spec:
+  type: library
+  language: rust
+  build:
+    tool: cargo
+    # Cargo workspace is nested under aoee/, so commands cd into that dir before running.
+    # Default `cargo build --release` builds every workspace member in parallel.
+    commands:
+      build: cd aoee && cargo build --release
+      package: cd aoee && cargo build --release
+      test: cd aoee && cargo test
+      check: cd aoee && cargo check
+      clean: cd aoee && cargo clean
+      install: cd aoee && cargo build --release
+  docker:
+    enabled: false
+  kubernetes:
+    enabled: false
+  runtime:
+    ports: []
