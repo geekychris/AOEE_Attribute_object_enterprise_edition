@@ -24,7 +24,16 @@ spec:
       clean: cd aoee && cargo clean
       install: cd aoee && cargo build --release
   docker:
-    enabled: false
+    enabled: true
+    # Two images live in this repo: the Rust gRPC server and the Spring Boot REST proxy.
+    # Both Dockerfiles are multi-stage and self-build; they need no host pre-build step.
+    images:
+      - tag: worksphere/aoee-server:latest
+        dockerfile: Dockerfile
+        context: .
+      - tag: worksphere/aoee-proxy:latest
+        dockerfile: Dockerfile.proxy
+        context: .
   kubernetes:
     enabled: false
   runtime:
