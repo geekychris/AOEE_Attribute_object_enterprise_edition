@@ -1,0 +1,33 @@
+apiVersion: devportal.io/v1
+kind: Asset
+metadata:
+  id: aoee
+  name: AOEE — Attribute Object Enterprise Edition
+  description: |
+    Rust-based graph cache + Java Spring proxy. Two images:
+      - worksphere/aoee-server:latest — Rust gRPC server (Dockerfile)
+      - worksphere/aoee-proxy:latest — Java HTTP/REST shim over the gRPC server (Dockerfile.proxy)
+    Consumed by enterprise_social_platform at runtime via cluster-internal DNS.
+  tags: [rust, java, grpc, graph, cache]
+spec:
+  type: service
+  language: rust
+  build:
+    tool: shell
+    commands:
+      # The two Dockerfiles are the canonical build path; cargo/mvn alone don't reproduce
+      # the consumed artifacts (worksphere/aoee-{server,proxy}:latest images). Wire 'install'
+      # to "build images" so dev_portal's deep-build chain installs producer images for
+      # consumers like enterprise-social-platform without needing a separate spinup.
+      install: docker build -t worksphere/aoee-server:latest -f Dockerfile . && docker build -t worksphere/aoee-proxy:latest -f Dockerfile.proxy .
+      build:   docker build -t worksphere/aoee-server:latest -f Dockerfile . && docker build -t worksphere/aoee-proxy:latest -f Dockerfile.proxy .
+  docker:
+    # Names dev_portal uses when it walks the runtime closure and builds images for
+    # consumers (e.g. enterprise-social-platform's spinup → AOEE images get built first).
+    images:
+      - tag: worksphere/aoee-server:latest
+        dockerfile: Dockerfile
+        context: .
+      - tag: worksphere/aoee-proxy:latest
+        dockerfile: Dockerfile.proxy
+        context: .
